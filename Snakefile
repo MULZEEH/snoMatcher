@@ -136,7 +136,7 @@ if config.get("generate_plots", True):
   rule scores_plots:
     input:
       info_boxes = "results/intermediate/info_boxes.Rdata"
-      
+      # 
     output:
        box_mismatch_distribution = "results/plots/box_mismatch_distribution.pdf",
   	   all_distance = "results/plots/all_distance.pdf",
