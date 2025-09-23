@@ -278,9 +278,9 @@ if(get_config("generate_plots")){
                                             "dist_c_d_prime", 
                                             "dist_c_d"))
   plot_df$name <- factor(plot_df$name, 
-                         levels = c("dist_d_prime_c", 
-                                    "dist_c_prime_d_prime", 
-                                    "dist_d_c_prime", 
+                         levels = c("dist_d_prime_c_prime", 
+                                    "dist_c_prime_d", 
+                                    "dist_c_d_prime", 
                                     "dist_c_d"), 
                          labels = c("C-D'", "D'-C'", "C'-D", "C-D"))
   
