@@ -1,0 +1,48 @@
+# A basic config file for the snoRNA feature analysis pipeline.
+
+#=====================================================
+# GLOBAL SETTINGS
+#=====================================================
+
+# This is a flag to determine whether to generate plots.
+# The `all` rule will check this setting.
+generate_plots: true
+
+# This is a flag to determine whether to export tables.
+# The `all` rule will check this setting.
+export_tables: true
+
+
+#=====================================================
+# THREADS AND CORES
+#=====================================================
+
+# Define the number of cores/threads for rules that can be parallelized.
+# Use this in your Snakefile like `threads: config["cores"]["setup_rule"]`
+cores: 1
+threads: 1
+#=====================================================
+# INPUT FILES
+#=====================================================
+
+# Define the paths to your raw input data files.
+# This makes it easy to change file locations without editing the Snakefile itself.
+input_files:
+  snodb: "data/raw/snoDB_data.xlsx"
+  met_sites: "data/raw/snoDB_rRNA_interactions.xlsx"
+  sno_boxes: "data/raw/cd_boxes.tsv"
+
+#=====================================================
+# OUTPUT FOLDERS
+#=====================================================
+
+# Define the base directory for all output files.
+# This can be useful for changing the entire output structure.
+output_dir: "results"
+
+# Define the sub-directories for specific output types.
+output_folders:
+  intermediate: "intermediate"
+  plots: "plots"
+  tables: "tables"
+  final: "final"

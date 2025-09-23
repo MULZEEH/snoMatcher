@@ -1,0 +1,1439 @@
+---
+title: "snoRNA feature analysis"
+output: html_notebook
+---
+
+# analysis of all cd box snoRNAs -> load
+
+```{r}
+library(Biostrings)
+library(data.table)
+library(dplyr)
+library(stringr)
+library(writexl)
+library(GenomicFeatures)
+library(readxl)
+library(stringi)
+library(seqinr)
+library(parallel)
+library(ggseqlogo)
+library(ggplot2)
+library(ggbeeswarm)
+library(ggpubr)
+# library(seqLogo)
+library(ape)
+library(tidyr)
+# snakemake@input[["counts"]]  ->THATS HOW I PASS THE DAATA FROM THE SNAKE FILE TO THE ACTUAL R SCRPT
+
+
+#setup the dfs
+snodb <- read_xlsx("snoDB_data.xlsx")
+met_sites <- read_xlsx("snoDB_rRNA_interactions.xlsx")
+
+snodb_boxes <- fread("cd_boxes.tsv")
+
+# che vuol dire c_start = -1 ???
+snodb_boxes <- snodb_boxes[snodb_boxes$c_start != -1 & snodb_boxes$c_prime_start != -1 & snodb_boxes$d_start != -1 & snodb_boxes$d_prime_start != -1,]
+
+snodb_boxes <- merge(snodb[, c("snoDB ID", "Symbol", "DNA Sequence")], snodb_boxes, by.x = "snoDB ID", by.y = "snoDB_id")
+
+snodb_boxes <- snodb_boxes[snodb_boxes$`snoDB ID` %in% met_sites$snoDB_id[met_sites$Status == "validated"],]
+
+snoRNA_seq <- DNAStringSet(snodb_boxes$`DNA Sequence`)
+names(snoRNA_seq) <- snodb_boxes$`snoDB ID`
+
+met_sites <- met_sites[met_sites$snoDB_id %in% snodb_boxes$`snoDB ID` & met_sites$Status == "validated",]
+
+```
+
+# match width (possibly to be repeated later with my results) -> matching 
+```{r}
+snodb_boxes$guide1_width <- str_count(snodb_boxes$guide1_seq)
+snodb_boxes$guide2_width <- str_count(snodb_boxes$guide2_seq)
+
+plot_df <- snodb_boxes %>% pivot_longer(c(guide1_width, guide2_width))
+
+ggplot(plot_df[plot_df$value != 0,], aes(value-1))+
+  geom_bar(fill="#434384")+
+  theme_bw()+
+  geom_text(stat="count", aes(x=value-1, label = stat(count)),position = position_dodge(width = 0.9), vjust = -0.3, size = 3)+
+  xlab("Guide width")+
+  ylab("# of events")+
+  scale_x_continuous(breaks = seq(7,18,1))+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank())
+ggsave("snoDB_analysis_validated/guide_width.pdf", device = cairo_pdf, width=4, height = 3)
+
+```
+
+# box logos -> quanto lunghi devono essere i c/d _seq? 
+
+```{r}
+c <- c(snodb_boxes$c_seq[str_count(snodb_boxes$c_seq) == 7])
+ggseqlogo(gsub(x = c,pattern = "T", replacement = "U"))
+ggsave("snoDB_analysis_validated/Cbox_logo.pdf", device = cairo_pdf, width=7, height = 5)
+
+c_prime <- c(snodb_boxes$c_prime_seq)
+ggseqlogo(gsub(x = c_prime,pattern = "T", replacement = "U"))
+ggsave("snoDB_analysis_validated/C_prime_box_logo.pdf", device = cairo_pdf, width=7, height = 5)
+
+d <- c(snodb_boxes$d_seq)
+ggseqlogo(gsub(x = d,pattern = "T", replacement = "U"))
+ggsave("snoDB_analysis_validated/Dbox_logo.pdf", device = cairo_pdf, width=7, height = 5)
+
+d_prime <- c(snodb_boxes$d_prime_seq)
+ggseqlogo(gsub(x = d_prime,pattern = "T", replacement = "U"))
+ggsave("snoDB_analysis_validated/D_prime_box_logo.pdf", device = cairo_pdf, width=7, height = 5)
+```
+
+# boxes scores
+
+```{r}
+
+#i generate all possible 7 element rna_seq ? why 7
+prova <-utils::combn(rep(c("C", "T", "G", "A"), 7),7)
+prova.str = unique(apply(prova, 2, paste0, collapse=""))
+
+# controllo quanto la mia stringa e' distante dalla "ottima"/probabile trovata dallanalisi precedente
+dist.prova1 = sapply(prova.str, function(x) adist(x, "ATGATGA"))
+dist.prova2 = sapply(prova.str, function(x) adist(x, "GTGATGA"))
+possible_cboxes1 <- prova.str[dist.prova1 <= 4]
+possible_cboxes2 <- prova.str[dist.prova2 <= 4]
+
+possible_cboxes <- union(possible_cboxes1, possible_cboxes2)
+save(possible_cboxes, file = "snoDB_analysis_validated/possible_cboxes.RData")
+
+pfm_c <- consensusMatrix(c, as.prob = T)
+write.csv(pfm_c, "snoDB_analysis_validated/pfm_cbox_snoDb_snoRNA.csv")
+
+c[dist.prova1[c]>3]
+c[dist.prova2[c]>3]
+cbox_scores <- sapply(possible_cboxes, PWMscoreStartingAt, pwm = as.matrix(pfm_c))
+cbox_scores_prop <- cbox_scores/max(cbox_scores)
+save(cbox_scores, cbox_scores_prop, file = "snoDB_analysis_validated/cbox_scores.RData")
+
+pfm_c_prime <- consensusMatrix(c_prime, as.prob = T)
+write.csv(pfm_c_prime, "snoDB_analysis_validated/pfm_c_prime_box_snoDb_snoRNA.csv")
+c_prime[dist.prova1[c_prime]>3]
+c_prime[dist.prova2[c_prime]>3]
+# pwm -> what
+
+c_prime_box_scores <- sapply(possible_cboxes, PWMscoreStartingAt, pwm = as.matrix(pfm_c_prime))
+c_prime_box_scores_prop <- c_prime_box_scores/max(c_prime_box_scores)
+save(c_prime_box_scores, c_prime_box_scores_prop, file = "snoDB_analysis_validated/c_prime_box_scores.RData")
+
+prova <-utils::combn(rep(c("C", "T", "G", "A"), 4),4)
+prova.str = unique(apply(prova, 2, paste0, collapse=""))
+dist.prova = sapply(prova.str, function(x) adist(x, "CTGA"))
+possible_dboxes <- prova.str[dist.prova <= 3]
+save(possible_dboxes, file = "snoDB_analysis_validated/possible_dboxes.RData")
+
+pfm_d <- consensusMatrix(d, as.prob = T)
+write.csv(pfm_d, "snoDB_analysis_validated/pfm_Dbox_snoDb_snoRNA.csv")
+d[dist.prova[d]>2]
+dbox_scores <- sapply(possible_dboxes, PWMscoreStartingAt, pwm = as.matrix(pfm_d))
+dbox_scores_prop <- dbox_scores/max(dbox_scores)
+save(dbox_scores, dbox_scores_prop, file = "snoDB_analysis_validated/dbox_scores.RData")
+
+pfm_d_prime <- consensusMatrix(d_prime, as.prob = T)
+write.csv(pfm_d_prime, "snoDB_analysis_validated/pfm_D_prime_box_snoDb_snoRNA.csv")
+d_prime[dist.prova[d_prime]>2]
+d_prime_box_scores <- sapply(possible_dboxes, PWMscoreStartingAt, pwm = as.matrix(pfm_d_prime))
+d_prime_box_scores_prop <- d_prime_box_scores/max(d_prime_box_scores)
+# i can save a list of differents df in a single file, clearly. So this is the smart approach
+save(d_prime_box_scores, d_prime_box_scores_prop, file = "snoDB_analysis_validated/d_prime_box_scores.RData")
+
+#maybe it would be better to only have 1 csv and RData -> {}
+
+```
+# snodb boxes scores
+
+```{r}
+# scoring motifs of each snorna ----
+# here i set i load the scores i had done previously on the analysis, so i need a space where to put these
+load("snoDB_analysis_validated/cbox_scores.RData")
+load("snoDB_analysis_validated/dbox_scores.RData")
+load("snoDB_analysis_validated/c_prime_box_scores.RData")
+load("snoDB_analysis_validated/d_prime_box_scores.RData")
+
+snodb_boxes$c_box_score <- cbox_scores[snodb_boxes$c_seq]
+snodb_boxes$dprime_box_score <- d_prime_box_scores[snodb_boxes$d_prime_seq]
+snodb_boxes$cprime_box_score <- c_prime_box_scores[snodb_boxes$c_prime_seq]
+snodb_boxes$d_box_score <- dbox_scores[snodb_boxes$d_seq]
+
+
+# # all motifs <- why is it commented
+# snodb_boxes$motif_score <- cbox_scores_prop[snodb_boxes$c_seq]+
+#   c_prime_box_scores_prop[snodb_boxes$c_prime_seq]*0.5+
+#   dbox_scores_prop[snodb_boxes$d_seq]+
+#   d_prime_box_scores_prop[snodb_boxes$d_prime_seq]*0.5
+
+# what is an aesthetic mapping ma'man? <- 
+ggplot(snodb_boxes, aes(motif_score))+
+  geom_histogram(fill = "#434384")+
+  theme_bw(base_size = 20)+
+  xlab("snoRNA Boxes score")+
+  ylab("# of events")
+  # scale_x_continuous(breaks= c(2.8,3, 3.2,3.4,3.6,3.8,4))
+ggsave("snoDB_analysis_validated/motif_score_snoDB_distribution.pdf", device = cairo_pdf, width = 6, height = 5)
+# minimum is 2.17
+
+# the couples
+snodb_boxes$up_motif_score <- cbox_scores_prop[snodb_boxes$c_seq]+
+  d_prime_box_scores_prop[snodb_boxes$d_prime_seq]*0.5
+
+ggplot(snodb_boxes, aes(up_motif_score))+
+  geom_histogram(fill = "#434384")+
+  theme_bw(base_size = 20)+
+  xlab("snoRNA Boxes score")+
+  ylab("# of events")+
+  scale_x_continuous(breaks= c(1, 1.2, 1.4,1.6,1.8,2))
+ggsave("snoDB_analysis_validated/up_motif_score_snoDB_distribution.pdf", device = cairo_pdf, width = 6, height = 5)
+# minimum is 0.98
+
+snodb_boxes$down_motif_score <- c_prime_box_scores_prop[snodb_boxes$c_prime_seq]*0.5+
+  dbox_scores_prop[snodb_boxes$d_seq]
+
+ggplot(snodb_boxes, aes(down_motif_score))+
+  geom_histogram(fill = "#434384")+
+  theme_bw(base_size = 20)+
+  xlab("snoRNA Boxes score")+
+  ylab("# of events")+
+  scale_x_continuous(breaks= c(1, 1.2, 1.4,1.6,1.8,2))
+ggsave("snoDB_analysis_validated/down_motif_score_snoDB_distribution.pdf", device = cairo_pdf, width = 6, height = 5)
+# minimum is 0.76
+
+```
+
+
+# mismatch boxes <- perche puo esserci un mismatch?! perche uso il doppio 7/4
+
+```{r}
+prova <-utils::combn(rep(c("C", "T", "G", "A"), 7),7) 
+prova.str = unique(apply(prova, 2, paste0, collapse=""))
+dist.prova1 = sapply(prova.str, function(x) adist(x, "ATGATGA"))
+dist.prova2 = sapply(prova.str, function(x) adist(x, "GTGATGA"))
+snodb_boxes$cbox_mismatches <- pmin(dist.prova1[snodb_boxes$c_seq], dist.prova2[snodb_boxes$c_seq])
+snodb_boxes$cbox_prime_mismatches <- pmin(dist.prova1[snodb_boxes$c_prime_seq], dist.prova2[snodb_boxes$c_prime_seq])
+
+prova <-utils::combn(rep(c("C", "T", "G", "A"), 4),4)
+prova.str = unique(apply(prova, 2, paste0, collapse=""))
+dist.prova = sapply(prova.str, function(x) adist(x, "CTGA"))
+snodb_boxes$dbox_mismatches <- dist.prova[snodb_boxes$d_seq]
+snodb_boxes$dbox_prime_mismatches <- dist.prova[snodb_boxes$d_prime_seq]
+
+plot_df <- snodb_boxes %>% pivot_longer(c("cbox_mismatches", "cbox_prime_mismatches", "dbox_mismatches", "dbox_prime_mismatches"))
+plot_df$name <- factor(plot_df$name, levels = c("dbox_mismatches", "dbox_prime_mismatches","cbox_mismatches", "cbox_prime_mismatches"), labels = c("D-Box", "D'-Box","C-Box","C'-Box"))
+
+plot_df$box <- "D-Box"
+plot_df$box[plot_df$name %in% c("C-Box", "C'-Box")] <- "C-Box"
+
+plot_df$box <- factor(plot_df$box, levels = c("D-Box", "C-Box"))
+
+
+ggplot(plot_df, aes(value, color = name,fill=name))+
+  geom_bar(position = position_dodge2(preserve = "single"))+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank())+
+  xlab("# of mismatches from canonical box")+
+  ylab("# of events")+
+  geom_text(stat="count", aes(x=value, label = stat(count)),position = position_dodge2(width = 0.9), vjust = -0.3, size = 4, show.legend = FALSE)+
+  scale_fill_manual(values = c("#d4aa00", "#ead580","#2e2e5b", "#7e81a9"))+
+  scale_color_manual(values = c("#947600", "#d7b323","#434384", "#52547a"))+
+  facet_grid(cols = vars(box), space = "free", scales = "free")+
+  theme(
+    strip.background = element_blank(),
+    strip.text.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank()
+  )+
+  guides(fill=guide_legend(title="Box type"), color = guide_legend(title="Box type"))
+
+ggsave("snoDB_analysis_validated/box_mismatch_distribution.pdf", device = cairo_pdf, width=7, height = 5)
+
+# removing snord10, 31, 111 - 4 mismatches in c'-box
+# removing snord19C - 3 mismatches in d'-box
+```
+
+# distances for scoring 
+
+```{r}
+snodb_boxes$dist_d_prime_c_prime <- snodb_boxes$c_prime_start - (snodb_boxes$d_prime_start+3)
+# 1-51
+# removing SNORD17
+
+
+snodb_boxes$dist_c_d_prime <- snodb_boxes$d_prime_start - 
+  (snodb_boxes$c_start+6)
+# 6-50
+
+snodb_boxes$dist_c_prime_d <- snodb_boxes$d_start-
+  (snodb_boxes$c_prime_start+6)
+# 8-63
+
+# total distance C - D
+snodb_boxes$dist_c_d <- snodb_boxes$d_start - (snodb_boxes$c_start+6)
+# 40-126
+# removing SNORD17 <- WHAT IS HAPPENING HERE WHY IS COMMENTED
+
+# snodb_boxes$dist_d_prime_d <- snodb_boxes$d_start-(snodb_boxes$d_prime_start+3)
+# # 22-109
+# # removing SNORD17
+# 
+# snodb_boxes$dist_c_c_prime <- snodb_boxes$c_prime_start-(snodb_boxes$c_start+6)
+# # 17-98
+
+# median(snodb_boxes$dist_d_prime_c)
+# # 17
+# 
+# median(snodb_boxes$dist_c_prime_d_prime)
+# # 8
+# 
+# median(snodb_boxes$dist_d_c_prime)
+# # 17
+# 
+# median(snodb_boxes$dist_c_d)
+# # 56
+
+# pipe operator is just doin g pivot(snodb, c( ...)) -> instead of passing it a parameter is passing through pipe
+plot_df <- snodb_boxes %>% pivot_longer(c("dist_c_prime_d_prime", "dist_d_prime_c", "dist_d_c_prime", "dist_c_d"))
+plot_df$name <- factor(plot_df$name, levels = c("dist_d_prime_c", "dist_c_prime_d_prime", "dist_d_c_prime", "dist_c_d"), labels = c("C-D'", "D'-C'", "C'-D", "C-D"))
+
+ggplot(plot_df, aes(name,value))+
+  geom_violin(alpha = 0.7,  color = "#2e2e5b", fill = "#434384", scale = "width")+
+  geom_boxplot(fill = "white", width= 0.2, outlier.shape = NA)+
+  theme_bw(base_size = 20)+
+  xlab("Boxes")+
+  ylab("Distances (nt)")+
+  # scale_y_log10(breaks = c(10, 20,30,40,50,1000))
+  scale_y_log10(breaks =c(1,5,10,20,50, 100, 200, 400, 800))+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank())
+
+ggsave("snoDB_analysis_validated/all_distances.pdf", device = cairo_pdf(), width = 6, height = 5)
+
+
+ggplot(snodb_boxes, aes(dist_c_prime_d_prime, after_stat(count)/sum(after_stat(count))))+
+  geom_bar(fill = "#434384")+
+  theme_bw()+
+  xlab("C' - D' dist")+
+  ylab("Density")+
+  scale_x_continuous(breaks =c(0,10,20,40,60, 80, 100, 125, 150))+
+  theme(panel.grid.minor = element_blank())
+ggsave("snoDB_analysis_validated/c_prime_d_prime_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+
+ggplot(snodb_boxes, aes(dist_d_prime_c, after_stat(count)/sum(after_stat(count))))+
+  geom_bar(fill = "#434384")+
+  theme_bw()+
+  xlab("C - D' dist")+
+  ylab("Density")+
+  scale_x_continuous(breaks =c(0,10,20,40,60, 80, 100, 125, 150))+
+  theme(panel.grid.minor = element_blank())
+ggsave("snoDB_analysis_validated/d_prime_c_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+
+ggplot(snodb_boxes, aes(dist_d_c_prime, after_stat(count)/sum(after_stat(count))))+
+  geom_bar(fill = "#434384")+
+  theme_bw()+
+  xlab("C' - D dist")+
+  ylab("Density")+
+  scale_x_continuous(breaks =c(0,10,20,40,60, 80, 100, 120, 140))+
+  theme(panel.grid.minor = element_blank())
+ggsave("snoDB_analysis_validated/c_prime_d_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+
+ggplot(snodb_boxes, aes(dist_c_d, after_stat(count)/sum(after_stat(count))))+
+  geom_bar(fill = "#434384")+
+  theme_bw()+
+  xlab("C - D dist")+
+  ylab("Density")+
+  scale_x_continuous(breaks =c(0,10,20,40,60, 80, 100, 120, 140, 160, 180, 200, 220))+
+  theme(panel.grid.minor = element_blank())
+ggsave("snoDB_analysis_validated/c_d_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+
+```
+
+
+pairing distributions
+```{r}
+snodb_data <- snodb_boxes %>% dplyr::select(-c("guide1_start", "guide2_start")) %>% pivot_longer(c(guide1_seq, guide2_seq), names_to = "guide", values_to = "guide_seq") %>% filter(guide_seq != "") %>% mutate(guide_seq = str_sub(guide_seq, -10, -2))
+
+
+# devo iniziare a settare la pipeline per tradurre ttto quello che sta succedendo -> INIZIA CON LA PIPELINE FATTTA BEN
+rRNA_seq<- readDNAStringSet("../Genome/Human/rRNA/hs_rRNA_hebras_processed.fasta")
+met_sites$rRNA_seq <- as.character(subseq(rRNA_seq[met_sites$rRNA], met_sites$`Pos snoRNABase`-3, met_sites$`Pos snoRNABase`+5))
+# detection guide region 9 (+1 at the beginning) nt
+
+snodb_data_guide <- merge(snodb_data, met_sites[, c("snoDB_id", "Symbol", "rRNA", "Pos snoRNABase", "rRNA_seq")], by.x = c("snoDB ID", "Symbol"), by.y = c("snoDB_id", "Symbol"))
+
+# guide evaluation
+snorna_match_seq <- as.data.frame(tstrsplit(as.character(reverse(snodb_data_guide$guide_seq)), "", fixed=T))
+
+rRNA_match_seq <- as.data.frame(tstrsplit(as.character(snodb_data_guide$rRNA_seq), "", fixed=T))
+for(j in 1:9){
+  snorna_match_seq[,j] <- paste0(as.character(snorna_match_seq[,j]), as.character(rRNA_match_seq[,j]))
+  snorna_match_seq[,j] <- str_replace_all(snorna_match_seq[,j], "AT|TA|GC|CG", "V")
+  snorna_match_seq[,j] <- str_replace_all(snorna_match_seq[,j], "GT|TG", "U")
+  non_matching <- !grepl("V|U", snorna_match_seq[,j])
+  # DA WHAT
+  snorna_match_seq[non_matching,j] <- "M"
+}
+snodb_data_guide$guide_match <- paste0(snorna_match_seq[,1], snorna_match_seq[,2], snorna_match_seq[,3],snorna_match_seq[,4],snorna_match_seq[,5], snorna_match_seq[,6], snorna_match_seq[,7], snorna_match_seq[,8],snorna_match_seq[,9])
+snodb_data_guide <- snodb_data_guide[str_split_fixed(snodb_data_guide$guide_match, "", 9)[,4] == "V",]
+snodb_data_guide <- snodb_data_guide[str_count(snodb_data_guide$guide_match, "M") <2,]
+
+snodb_data_guide <- snodb_data_guide %>% dplyr::select(-c(rRNA, `Pos snoRNABase`)) %>% distinct()
+
+pos_pairing <-  as.data.frame(str_split_fixed(snodb_data_guide$guide_match, pattern = "", 9))
+names(pos_pairing) <- c("i-3", "i-2", "i-1", "i", "i+1", "i+2", "i+3", "i+4", "i+5")
+
+```
+
+# generating guide scores my results
+```{r}
+
+# Sample data matrix
+data_matrix <- as.matrix(pos_pairing)
+
+# Find unique symbols and positions
+unique_symbols <- unique(as.vector(data_matrix))
+positions <- 1:9
+
+# Calculate the frequency of each symbol in each position using apply()
+frequency_matrix <- sapply(positions, function(pos) {
+  col_data <- data_matrix[, pos]
+  table(factor(col_data, levels = unique_symbols))
+})
+
+# Convert the result to a matrix, setting row and column names
+frequency_matrix <- as.matrix(frequency_matrix)
+frequency_matrix <- frequency_matrix/nrow(pos_pairing)
+
+possible_guides <-utils::combn(rep(c("V", "U", "M"), 9),9)
+possible_guides = unique(apply(possible_guides, 2, paste0, collapse=""))
+dist.prova = sapply(possible_guides, function(x) adist(x, "VVVVVVVVV"))
+possible_guides <- possible_guides[dist.prova < 4]
+save(possible_guides, file = "snoDB_analysis_validated/possible_guides.RData")
+
+# Function to calculate the score of a string based on the frequency matrix
+calculate_score <- function(input_string, frequency_matrix) {
+  input_chars <- strsplit(input_string, "")[[1]]
+  row_indices <- match(input_chars, rownames(frequency_matrix))
+  col_indices <- seq_along(input_chars)
+  
+  score <- 0
+  for (i in 1:length(input_chars)) {
+    score <- score + frequency_matrix[row_indices[i], col_indices[i]]
+  }
+  return(score)
+}
+
+# Calculate the score for each element in the input vector
+guides_scores <- sapply(possible_guides, calculate_score, frequency_matrix = frequency_matrix)
+guide
+guides_scores_prop <- guides_scores/max(guides_scores)
+guides_scores_prop <- setNames(guides_scores_prop, possible_guides)
+names(guides_scores) <- str_split_fixed(names(guides_scores), "[.]",2)[,1]
+save(guides_scores,guides_scores_prop, file = "snoDB_analysis_validated/guides_scores.RData")
+load("snoDB_analysis_validated/guides_scores.RData")
+
+# guide scores of my results
+snodb_data_guide$guide_score <- guides_scores[snodb_data_guide$guide_match]
+                                                                                                                             # minimum is 0.69
+
+snodb_data_guide$snoRNA <- T
+
+ggplot(hits_final, aes(guide_score))+
+  geom_histogram(fill = "#434384")+
+  theme_bw()
+
+ggsave("snoDB_analysis_validated/guide_score_dist.pdf", device = cairo_pdf, height = 3, width = 4)
+```
+
+# negative examples
+
+```{r}
+negatives <- read.csv("gene_bodies_ENSG00000079974.19_site_6437_.csv")
+negatives <- negatives %>% dplyr::select(unique_id, seq_score, c_box_seq, d_prime_box_seq, c_prime_box_seq, d_box_seq,c_d_prime_dist, d_prime_c_prime_dist, c_prime_d_dist, c_d_dist,)
+negatives$guide_score <- guides_scores[negatives$seq_score]
+negatives$c_box_score <- cbox_scores[negatives$c_box_seq]
+negatives$dprime_box_score <- d_prime_box_scores[negatives$d_prime_box_seq]
+negatives$cprime_box_score <- c_prime_box_scores[negatives$c_prime_box_seq]
+negatives$d_box_score <- dbox_scores[negatives$d_box_seq]
+negatives <- negatives[sample(1:nrow(negatives), 600),]
+negatives$snoRNA <- F
+negatives <- negatives %>% dplyr::rename(dist_d_prime_c_prime = d_prime_c_prime_dist, dist_c_prime_d = c_prime_d_dist, dist_c_d_prime = c_d_prime_dist, dist_c_d = c_d_dist)
+snorna_machine_learning <- rbind(snodb_data_guide %>% dplyr::select(c_box_score, dprime_box_score, cprime_box_score, d_box_score, dist_c_d_prime, dist_d_prime_c_prime, dist_c_prime_d, dist_c_d, guide_score, snoRNA), negatives %>% dplyr::select(c_box_score, dprime_box_score, cprime_box_score, d_box_score, dist_c_d_prime, dist_d_prime_c_prime, dist_c_prime_d, dist_c_d, guide_score, snoRNA))
+
+save(snodb_data_guide, negatives, snorna_machine_learning, file = "snorna_machine_learning.RData")
+load("snorna_machine_learning.RData")
+
+# a snorna has a shorter cbox, i need to remove it for now
+snorna_machine_learning <- na.omit(snorna_machine_learning)
+snorna_machine_learning$snoRNA <- as.factor(snorna_machine_learning$snoRNA)
+
+
+```
+
+time for learning
+```{r}
+# Load required libraries
+library(randomForest)
+library(ranger)
+library(caret)
+
+
+
+# Normalize numerical features (e.g., distances)
+preproc <- preProcess(snorna_machine_learning, method = c("center", "scale"))
+data_norm <- predict(preproc, snorna_machine_learning)
+
+data_norm$snoRNA <- factor(data_norm$snoRNA)
+
+
+# Split data into training and testing sets
+set.seed(123)
+train_idx <- createDataPartition(data_norm$snoRNA, p = 0.8, list = FALSE)
+train_data <- data_norm[train_idx, ]
+test_data <- data_norm[-train_idx, ]
+
+# Train the Random Forest model
+model <- ranger(
+  snoRNA ~ ., 
+  data = train_data,
+  importance = "permutation", # For feature importance
+  num.trees = 500,
+  mtry = sqrt(ncol(train_data) - 1),
+  probability = T
+)
+
+# --------------------------------------
+# Step 3: Evaluate performance
+# --------------------------------------
+preds <- colnames(pred$predictions)[max.col(pred$predictions, ties.method = "first")]
+preds <- factor(preds, levels = levels(test_data$snoRNA))
+confusionMatrix(preds, test_data$snoRNA, positive = "TRUE")
+
+
+# --------------------------------------
+# Step 4: Extract feature importance
+# --------------------------------------
+importance_scores <- importance(model)
+importance_df <- data.frame(
+  Feature = names(importance_scores),
+  Importance = importance_scores
+) %>% arrange(desc(Importance))
+
+
+# Plot importance
+ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Feature Importance (Random Forest)")
+
+```
+
+
+# trying with real data 159
+```{r}
+
+load("snoDB_analysis_validated/cbox_scores.RData")
+load("snoDB_analysis_validated/dbox_scores.RData")
+load("snoDB_analysis_validated/c_prime_box_scores.RData")
+load("snoDB_analysis_validated/d_prime_box_scores.RData")
+load("snoDB_analysis_validated/guides_scores.RData")
+
+putative_159 <- read_xlsx("snoRNA_human_met_159_anno.xlsx")
+
+putative_159 <- putative_159 %>% dplyr::select(unique_id, external_gene_name, seq_score, c_box_seq, d_prime_box_seq, c_prime_box_seq, d_box_seq,c_d_prime_dist, d_prime_c_prime_dist, c_prime_d_dist, c_d_dist)
+putative_159$guide_score <- guides_scores[putative_159$seq_score]
+putative_159$c_box_score <- cbox_scores[putative_159$c_box_seq]
+putative_159$dprime_box_score <- d_prime_box_scores[putative_159$d_prime_box_seq]
+putative_159$cprime_box_score <- c_prime_box_scores[putative_159$c_prime_box_seq]
+putative_159$d_box_score <- dbox_scores[putative_159$d_box_seq]
+putative_159 <- putative_159 %>% dplyr::rename(dist_d_prime_c_prime = d_prime_c_prime_dist, dist_c_prime_d = c_prime_d_dist, dist_c_d_prime = c_d_prime_dist, dist_c_d = c_d_dist)
+# putative_159 <- putative_159 %>% dplyr::select(unique_id, external_gene_name, c_box_score, dprime_box_score, cprime_box_score, d_box_score, dist_c_d_prime, dist_d_prime_c_prime, dist_c_prime_d, dist_c_d, guide_score)
+
+# Normalize numerical features (e.g., distances)
+preproc_159 <- preProcess(putative_159, method = c("center", "scale"))
+data_norm_159 <- predict(preproc_159, putative_159)
+
+# Step 2: Make predictions
+predictions <- predict(model, data = data_norm_159)
+
+# Step 3: Extract predicted probabilities
+predicted_probabilities <- predictions$predictions
+
+new_data_with_predictions <- bind_cols(putative_159, as.data.frame(predicted_probabilities))
+
+# Step 6: Save or use the predictions
+write_xlsx(new_data_with_predictions, "snoRNA_randomforest_159_18S_human.xlsx")
+
+```
+
+
+# trying with real data 222
+```{r}
+
+load("snoDB_analysis_validated/cbox_scores.RData")
+load("snoDB_analysis_validated/dbox_scores.RData")
+load("snoDB_analysis_validated/c_prime_box_scores.RData")
+load("snoDB_analysis_validated/d_prime_box_scores.RData")
+load("snoDB_analysis_validated/guides_scores.RData")
+
+putative_222 <- read.csv("snoRNA_mouse_met_222.csv")
+
+putative_222 <- putative_222 %>% dplyr::select(unique_id,names, seq_score, c_box_seq, d_prime_box_seq, c_prime_box_seq, d_box_seq,c_d_prime_dist, d_prime_c_prime_dist, c_prime_d_dist, c_d_dist)
+putative_222$guide_score <- guides_scores[putative_222$seq_score]
+putative_222$c_box_score <- cbox_scores[putative_222$c_box_seq]
+putative_222$dprime_box_score <- d_prime_box_scores[putative_222$d_prime_box_seq]
+putative_222$cprime_box_score <- c_prime_box_scores[putative_222$c_prime_box_seq]
+putative_222$d_box_score <- dbox_scores[putative_222$d_box_seq]
+putative_222 <- putative_222 %>% dplyr::rename(dist_d_prime_c_prime = d_prime_c_prime_dist, dist_c_prime_d = c_prime_d_dist, dist_c_d_prime = c_d_prime_dist, dist_c_d = c_d_dist)
+
+# Normalize numerical features (e.g., distances)
+preproc_222 <- preProcess(putative_222, method = c("center", "scale"))
+data_norm_222 <- predict(preproc_222, putative_222)
+
+# Step 2: Make predictions
+predictions <- predict(model, data = data_norm_222)
+
+# Step 3: Extract predicted probabilities
+predicted_probabilities <- predictions$predictions
+
+new_data_with_predictions <- bind_cols(putative_222, as.data.frame(predicted_probabilities))
+
+putative_222_anno <- read_xlsx("snoRNA_mouse_met_222_anno.xlsx")
+
+new_data_with_predictions <- merge(unique(putative_222_anno[, c("met_site", "rRNA", "ensembl_gene_id", "external_gene_name", "gene_biotype" ,"description")]), new_data_with_predictions, by.x= "ensembl_gene_id", by.y = "names", all.y = T)
+new_data_with_predictions <- new_data_with_predictions[order(-new_data_with_predictions$`TRUE`),]
+
+# Step 6: Save or use the predictions
+write_xlsx(new_data_with_predictions,"snoRNA_randomforest_222_18S_mouse.xlsx")
+
+snoRNA_seq <- readDNAStringSet("../Genome/Mouse/mouse_gene_seq.fasta")
+names(snoRNA_seq) <- str_split_fixed(names(snoRNA_seq), "[.]",2)[,1]
+as.character(subseq(snoRNA_seq["ENSMUSG00000002565"], 51300, 51450))
+
+```
+
+
+# trying with real data 578
+```{r}
+
+load("snoDB_analysis_validated/cbox_scores.RData")
+load("snoDB_analysis_validated/dbox_scores.RData")
+load("snoDB_analysis_validated/c_prime_box_scores.RData")
+load("snoDB_analysis_validated/d_prime_box_scores.RData")
+load("snoDB_analysis_validated/guides_scores.RData")
+
+putative_578 <- read.csv("snoRNA_mouse_18S_578.csv")
+
+putative_578 <- putative_578 %>% dplyr::select(unique_id,names, seq_score, c_box_seq, d_prime_box_seq, c_prime_box_seq, d_box_seq,c_d_prime_dist, d_prime_c_prime_dist, c_prime_d_dist, c_d_dist)
+putative_578$guide_score <- guides_scores[putative_578$seq_score]
+putative_578$c_box_score <- cbox_scores[putative_578$c_box_seq]
+putative_578$dprime_box_score <- d_prime_box_scores[putative_578$d_prime_box_seq]
+putative_578$cprime_box_score <- c_prime_box_scores[putative_578$c_prime_box_seq]
+putative_578$d_box_score <- dbox_scores[putative_578$d_box_seq]
+putative_578 <- putative_578 %>% dplyr::rename(dist_d_prime_c_prime = d_prime_c_prime_dist, dist_c_prime_d = c_prime_d_dist, dist_c_d_prime = c_d_prime_dist, dist_c_d = c_d_dist)
+
+# Normalize numerical features (e.g., distances)
+preproc_578 <- preProcess(putative_578, method = c("center", "scale"))
+data_norm_578 <- predict(preproc_578, putative_578)
+
+# Step 2: Make predictions
+predictions <- predict(model, data = data_norm_578)
+
+# Step 3: Extract predicted probabilities
+predicted_probabilities <- predictions$predictions
+
+new_data_with_predictions <- bind_cols(putative_578, as.data.frame(predicted_probabilities))
+
+putative_578_anno <- read_xlsx("snoRNA_mouse_met_578_anno.xlsx")
+
+new_data_with_predictions <- merge(unique(putative_578_anno[, c("met_site", "rRNA", "ensembl_gene_id", "external_gene_name", "gene_biotype" ,"description")]), new_data_with_predictions, by.x= "ensembl_gene_id", by.y = "names", all.y = T)
+new_data_with_predictions <- new_data_with_predictions[order(-new_data_with_predictions$`TRUE`),]
+
+# Step 6: Save or use the predictions
+write_xlsx(new_data_with_predictions,"snoRNA_randomforest_578_18S_mouse.xlsx")
+
+snoRNA_seq <- readDNAStringSet("../Genome/Mouse/mouse_gene_seq.fasta")
+names(snoRNA_seq) <- str_split_fixed(names(snoRNA_seq), "[.]",2)[,1]
+as.character(subseq(snoRNA_seq["ENSMUSG00000002565"], 51300, 51450))
+
+```
+
+fitting distance with distribution
+```{r}
+# fitting distribution to distances
+
+library(fitdistrplus)
+fit_function <- function(vect){
+  fit_pois <- fitdist(vect, distr= "pois", method = "mle")
+  fit_nbin <- fitdist(vect, distr = "nbinom", method = "mle")
+  dist <- seq(min(vect),max(vect), 1)
+  fit_pois <- dpois(dist, lambda = fit_pois$estimate)
+  fit_nbin <- dnbinom(dist,  size= fit_nbin$estimate[1], mu = fit_nbin$estimate[2])
+  df_fit_pois <- data.frame(dist, fit_pois)
+  df_fit_nbin <- data.frame(dist, fit_nbin)
+  vect_df <- as.data.table(table(vect))
+  vect_df[, N_norm := N/sum(N)]
+  vect_df <- vect_df[order(vect)]
+  df_fit_pois <- merge(df_fit_pois, vect_df, by.x = "dist", by.y = "vect", all.x=T)
+  df_fit_pois$N_norm[is.na(df_fit_pois$N_norm)] <-0 
+  df_fit_nbin <- merge(df_fit_nbin, vect_df, by.x = "dist", by.y = "vect", all.x=T)
+  df_fit_nbin$N_norm[is.na(df_fit_nbin$N_norm)] <-0 
+  pois_cor <- cor(df_fit_pois$fit_pois, df_fit_pois$N_norm)
+  nbin_cor <- cor(df_fit_nbin$fit_nbin, df_fit_nbin$N_norm)
+  print(pois_cor)
+  print(nbin_cor)
+  if(pois_cor>nbin_cor){
+    best_fit <- (df_fit_pois)
+  } else{
+    best_fit <-(df_fit_nbin)
+  }
+  best_fit$score <- c(best_fit[,2])/max(c(best_fit[,2]))
+  return(best_fit)
+}
+
+c_d_prime_dist_fit <- fit_function(snodb_boxes$dist_d_prime_c)
+v_c_d_prime_dist_fit <- setNames(c_d_prime_dist_fit$score, c_d_prime_dist_fit$dist)
+save(c_d_prime_dist_fit, v_c_d_prime_dist_fit, file = "snoDB_analysis_validated/c_d_prime_dist_nbin_scores.RData")
+
+ggplot(c_d_prime_dist_fit, aes(dist,N_norm))+
+  geom_col(fill = "#434384")+
+  geom_line(aes(dist, fit_nbin), color = "#d4aa00", linewidth = 1)+
+  theme_bw()+
+  xlab("Dist C-D' Box")+
+  ylab("Density")+
+  scale_color_manual(values = c(snoRNAs = "#434384", Nbinom = "#d4aa00"))
+ggsave("snoDB_analysis_validated/c_d_prime_dist_nbin_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+
+c_prime_d_dist_fit <- fit_function(snodb_boxes$dist_d_c_prime)
+v_c_prime_d_dist_fit <- setNames(c_prime_d_dist_fit$score, c_prime_d_dist_fit$dist)
+save(c_prime_d_dist_fit, v_c_prime_d_dist_fit, file = "snoDB_analysis_validated/c_prime_d_dist_nbin_scores.RData")
+
+ggplot(c_prime_d_dist_fit, aes(dist,N_norm))+
+  geom_col(fill = "#434384")+
+  geom_line(aes(dist, fit_nbin), color = "#d4aa00", linewidth = 1)+
+  theme_bw()+
+  xlab("Dist C'-D Box")+
+  ylab("Density")+
+  scale_color_manual(values = c(snoRNAs = "#434384", Nbinom = "#d4aa00"))
+ggsave("snoDB_analysis_validated/c_prime_d_dist_nbin_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+
+c_prime_d_prime_dist_fit <- fit_function(snodb_boxes$dist_c_prime_d_prime)
+v_c_prime_d_prime_dist_fit <- setNames(c_prime_d_prime_dist_fit$score, c_prime_d_prime_dist_fit$dist)
+save(c_prime_d_prime_dist_fit, v_c_prime_d_prime_dist_fit, file = "snoDB_analysis_validated/c_prime_d_prime_dist_nbin_scores.RData")
+
+ggplot(c_prime_d_prime_dist_fit, aes(dist,N_norm))+
+  geom_col(fill = "#434384")+
+  geom_line(aes(dist, fit_nbin), color = "#d4aa00", linewidth = 1)+
+  theme_bw()+
+  xlab("Dist C'-D' Box")+
+  ylab("Density")+
+  scale_color_manual(values = c(snoRNAs = "#434384", Nbinom = "#d4aa00"))
+ggsave("snoDB_analysis_validated/c_prime_d_prime_dist_fit_nbin_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+
+c_d_dist_fit <- fit_function(snodb_boxes$dist_c_d)
+v_c_d_dist_fit <- setNames(c_d_dist_fit$score, c_d_dist_fit$dist)
+save(c_d_dist_fit, v_c_d_dist_fit,file = "snoDB_analysis_validated/c_d_dist_pois_scores.RData")
+
+ggplot(c_d_dist_fit, aes(dist,N_norm))+
+  geom_col(fill = "#434384")+
+  geom_line(aes(dist, fit_pois), color = "#d4aa00", linewidth = 1)+
+  theme_bw()+
+  xlab("Dist C-D Box")+
+  ylab("Density")+
+  scale_color_manual(values = c(snoRNAs = "#434384", Nbinom = "#d4aa00"))
+ggsave("snoDB_analysis_validated/c_d_dist_pois_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+
+# let's try distance scorings on real snoRNAs
+load("snoDB_analysis_validated/c_d_dist_pois_scores.RData")
+load("snoDB_analysis_validated/c_d_prime_dist_nbin_scores.RData")
+load("snoDB_analysis_validated/c_prime_d_dist_nbin_scores.RData")
+load("snoDB_analysis_validated/c_prime_d_prime_dist_nbin_scores.RData")
+snodb_boxes$dist_c_d_prime_score <- v_c_d_prime_dist_fit[as.character(snodb_boxes$dist_d_prime_c)]
+snodb_boxes$dist_d_c_prime_score <-v_c_prime_d_dist_fit[as.character(snodb_boxes$dist_d_c_prime)]
+snodb_boxes$dist_c_prime_d_prime_score <-v_c_prime_d_prime_dist_fit[as.character(snodb_boxes$dist_c_prime_d_prime)]
+snodb_boxes$dist_c_d_score <- v_c_d_dist_fit[as.character(snodb_boxes$dist_c_d)]
+
+snodb_boxes$dist_score <- v_c_d_prime_dist_fit[as.character(snodb_boxes$dist_d_prime_c)]+
+  v_c_prime_d_dist_fit[as.character(snodb_boxes$dist_d_c_prime)]+
+  v_c_prime_d_prime_dist_fit[as.character(snodb_boxes$dist_c_prime_d_prime)]+
+  v_c_d_dist_fit[as.character(snodb_boxes$dist_c_d)]
+
+write_xlsx(snodb_boxes, "snoDB_analysis_validated/snodb_analysis.xlsx")
+
+ggplot(snodb_boxes, aes(dist_score, after_stat(count/sum(count))))+
+  geom_histogram(fill = "#434384")+
+  theme_bw()+
+  scale_x_continuous(breaks = c(0.5,1,1.5,2,2.5,3,3.5,4))+
+  ylab("Density")
+ggsave("snoDB_analysis_validated/dist_score_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+# min is 0.69
+
+```
+
+scoring motif + dist -> whats the purpose???? what are those numbers????
+
+```{r}
+snodb_boxes$motif_dist_score <- (snodb_boxes$motif_score/3)*5 + (snodb_boxes$dist_score/4)
+# min is 4.3
+```
+
+
+# looking for alignments in terminal helix (up to 7 nucleotides upstream and of at least 3 bp) (boxes included)
+
+```{r}
+
+start_seq <- subseq(snoRNA_seq, pmax(1, snodb_boxes$c_start-6), snodb_boxes$c_start+7)
+end_seq <- subseq(snoRNA_seq, snodb_boxes$d_start+1, pmin(snodb_boxes$d_start+11,width(snoRNA_seq)))
+
+# start_seq <- subseq(snoRNA_seq, 1, snodb_boxes$c_start+7)
+# end_seq <- subseq(snoRNA_seq, snodb_boxes$d_start+1, width(snoRNA_seq))
+
+
+
+
+rev_end_seq <- reverse(end_seq)
+
+
+score_system <- matrix(c(-3,-3,-3,+2,
+                         -3,-3,+3,-3,
+                         -3,+3,-3,+1,
+                         +2,-3,+1,-3),
+                       nrow=4, ncol = 4,
+                       dimnames = list(c("A", "C", "G", "T"), c("A", "C","G","T")))
+
+pwa <- pairwiseAlignment(start_seq, rev_end_seq, type = "local", substitutionMatrix = score_system, gapOpening = 4, gapExtension = 2)
+align_df <- data.table("transcript"= names(snoRNA_seq), "start_align" = as.character(alignedPattern(pwa)), "end_align" = as.character(reverse(alignedSubject(pwa))), "score" = score(pwa))
+
+#creo file senza -
+align_df$start_align <- str_replace_all(align_df$start_align, "-", "")
+align_df$end_align <- str_replace_all(align_df$end_align, "-", "")
+
+table(str_count(align_df$start_align))
+align_df$length_align <- str_count(align_df$start_align)
+
+ggplot(align_df, aes(length_align))+
+  geom_bar(fill = "#434384")+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank())+
+  scale_x_continuous(breaks = c(1,2,3,4,5,6,7,8,9,10))+
+  geom_text(stat="count", aes(x=length_align, label = stat(count)),position = position_dodge(width = 0.9), vjust = -0.3, size = 3)
+
+ggsave("snoDB_analysis_validated/terminal_helix_with_boxes_align.pdf", device = cairo_pdf, width = 4, height = 3)
+
+
+align_df <- align_df[str_count(align_df$start_align) >2]
+# 215 su 228
+
+
+
+# match pattern per trovare posizione allineamento
+require(doParallel)
+require(foreach)
+
+ncores <- detectCores()-1
+cluster_ext <- makeCluster(ncores, type = "SOCK")
+registerDoParallel(cl = cluster_ext)
+
+pos_align_df<-NULL
+
+pos_align_df<-foreach(transcript = align_df$transcript,.combine='rbind',.packages = c("data.table","Biostrings")) %dopar% {
+  data.table("transcript" = transcript, tail(as.data.table(vmatchPattern(align_df$start_align[align_df$transcript == transcript], start_seq[transcript])),1), as.data.table(vmatchPattern(align_df$end_align[align_df$transcript == transcript], end_seq[transcript]))[1,])
+}
+stopCluster(cluster_ext)
+
+
+#chiamo le colonne nel modo giusto che se no mi sbaglio
+names(pos_align_df)[c(4:6,9:11)] <- c("align_5_start", "align_5_end", "align_5_width", "align_3_start", "align_3_end", "align_3_width")
+
+# aggiungo risultati match pattern a tabella principale ----
+align_df <- merge(align_df, pos_align_df[,c(1, 4,5,6,9,10,11)], by = "transcript")
+
+align_df <- merge(align_df, snodb_boxes[,c(1, 6,8)], by.x = "transcript", by.y = "snoDB ID")
+
+# trovo posizione reale allineamento in 3'
+
+align_df$align_3_start <- align_df$d_start +1 + align_df$align_3_start-1
+align_df$align_3_end <- align_df$d_start +1 + align_df$align_3_end-1
+
+# trovo posizione reale allineamento in 5'
+
+align_df$align_5_start <- pmax(1, align_df$c_start-6) + align_df$align_5_start -1
+align_df$align_5_end <- pmax(1, align_df$c_start-6) + align_df$align_5_end -1
+
+# guardo distanza massima di inizio allineamento
+align_df$dist_c <- align_df$c_start-align_df$align_5_end+1
+align_df$dist_d <- align_df$align_3_start-(align_df$d_start+4)
+
+write_xlsx(align_df, "snoDB_analysis_validated/alignments_terminal_helix.xlsx")
+
+align_boxes <- align_df
+
+```
+# looking for alignments in terminal helix (up to 7 nucleotides upstream and of at least 3 bp) (boxes excluded)
+# this should be the real one, on rfam no interaction between boxes is shown
+
+```{r}
+
+start_seq <- subseq(snoRNA_seq, pmax(1, snodb_boxes$c_start-6), snodb_boxes$c_start)
+end_seq <- subseq(snoRNA_seq, snodb_boxes$d_start+5, pmin(snodb_boxes$d_start+11,width(snoRNA_seq)))
+
+# start_seq <- subseq(snoRNA_seq, 1, snodb_boxes$c_start)
+# end_seq <- subseq(snoRNA_seq, snodb_boxes$d_start+5, width(snoRNA_seq))
+
+rev_end_seq <- reverse(end_seq)
+
+
+score_system <- matrix(c(-3,-3,-3,+2,
+                         -3,-3,+3,-3,
+                         -3,+3,-3,+1,
+                         +2,-3,+1,-3),
+                       nrow=4, ncol = 4,
+                       dimnames = list(c("A", "C", "G", "T"), c("A", "C","G","T")))
+
+pwa <- pairwiseAlignment(start_seq, rev_end_seq, type = "local", substitutionMatrix = score_system, gapOpening = 4, gapExtension = 2)
+align_df <- data.table("transcript"= names(snoRNA_seq), "start_align" = as.character(alignedPattern(pwa)), "end_align" = as.character(reverse(alignedSubject(pwa))), "score" = score(pwa))
+
+#creo file senza -
+align_df$start_align <- str_replace_all(align_df$start_align, "-", "")
+align_df$end_align <- str_replace_all(align_df$end_align, "-", "")
+
+table(str_count(align_df$start_align))
+align_df$length_align <- str_count(align_df$start_align)
+
+ggplot(align_df, aes(length_align))+
+  geom_bar(fill = "#434384")+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank())+
+  scale_x_continuous(breaks = c(seq(0,20,2)))+
+  geom_text(stat="count", aes(x=length_align, label = stat(count)),position = position_dodge(width = 0.9), vjust = -0.3, size = 3)
+
+ggsave("snoDB_analysis_validated/terminal_helix_without_boxes_align.pdf", device = cairo_pdf, width = 4, height = 3)
+
+ggplot(align_df, aes(score))+
+  geom_bar(fill = "#434384")+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank())+
+  scale_x_continuous(breaks = c(seq(0,20,2)))+
+  geom_text(stat="count", aes(x=score, label = stat(count)),position = position_dodge(width = 0.9), vjust = -0.3, size = 3)
+
+ggsave("snoDB_analysis_validated/score_terminal_helix_without_boxes_align.pdf", device = cairo_pdf, width = 4, height = 3)
+
+
+align_df <- align_df[str_count(align_df$start_align) >2]
+# 187 su 228
+
+
+
+# match pattern per trovare posizione allineamento
+require(doParallel)
+require(foreach)
+
+ncores <- detectCores()-1
+cluster_ext <- makeCluster(ncores, type = "SOCK")
+registerDoParallel(cl = cluster_ext)
+
+pos_align_df<-NULL
+
+pos_align_df<-foreach(transcript = align_df$transcript,.combine='rbind',.packages = c("data.table","Biostrings")) %dopar% {
+  data.table("transcript" = transcript, tail(as.data.table(vmatchPattern(align_df$start_align[align_df$transcript == transcript], start_seq[transcript])),1), as.data.table(vmatchPattern(align_df$end_align[align_df$transcript == transcript], end_seq[transcript]))[1,])
+}
+stopCluster(cluster_ext)
+
+
+#chiamo le colonne nel modo giusto che se no mi sbaglio
+names(pos_align_df)[c(4:6,9:11)] <- c("align_5_start", "align_5_end", "align_5_width", "align_3_start", "align_3_end", "align_3_width")
+
+# aggiungo risultati match pattern a tabella principale ----
+align_df <- merge(align_df, pos_align_df[,c(1, 4,5,6,9,10,11)], by = "transcript")
+
+align_df <- merge(align_df, snodb_boxes[,c(1, 6,8)], by.x = "transcript", by.y = "snoDB ID")
+
+# trovo posizione reale allineamento in 3'
+
+align_df$align_3_start <- align_df$d_start +5 + align_df$align_3_start-1
+align_df$align_3_end <- align_df$d_start +5 + align_df$align_3_end-1
+
+# trovo posizione reale allineamento in 5'
+
+align_df$align_5_start <- pmax(1, align_df$c_start-6) + align_df$align_5_start -1
+align_df$align_5_end <- pmax(1, align_df$c_start-6) + align_df$align_5_end -1
+
+# guardo distanza massima di inizio allineamento
+align_df$dist_c <- align_df$c_start-align_df$align_5_end+1
+align_df$dist_d <- align_df$align_3_start-(align_df$d_start+4)
+
+write_xlsx(align_df, "snoDB_analysis_validated/alignments_terminal_helix.xlsx")
+
+```
+alignments in terminal helix of scrambled snornas
+```{r}
+scr_snoRNA_seq <- DNAStringSet(stri_rand_shuffle(snoRNA_seq))
+names(scr_snoRNA_seq) <- names(snoRNA_seq)
+
+start_seq <- subseq(scr_snoRNA_seq, 1, 7)
+end_seq <- subseq(scr_snoRNA_seq, width(scr_snoRNA_seq)-6, width(snoRNA_seq))
+
+# start_seq <- subseq(snoRNA_seq, 1, snodb_boxes$c_start)
+# end_seq <- subseq(snoRNA_seq, snodb_boxes$d_start+5, width(snoRNA_seq))
+
+rev_end_seq <- reverse(end_seq)
+
+
+score_system <- matrix(c(-3,-3,-3,+2,
+                         -3,-3,+3,-3,
+                         -3,+3,-3,+1,
+                         +2,-3,+1,-3),
+                       nrow=4, ncol = 4,
+                       dimnames = list(c("A", "C", "G", "T"), c("A", "C","G","T")))
+
+pwa <- pairwiseAlignment(start_seq, rev_end_seq, type = "local", substitutionMatrix = score_system, gapOpening = 4, gapExtension = 2)
+align_df <- data.table("transcript"= names(snoRNA_seq), "start_align" = as.character(alignedPattern(pwa)), "end_align" = as.character(reverse(alignedSubject(pwa))), "score" = score(pwa))
+
+#creo file senza -
+align_df$start_align <- str_replace_all(align_df$start_align, "-", "")
+align_df$end_align <- str_replace_all(align_df$end_align, "-", "")
+
+table(str_count(align_df$start_align))
+align_df$length_align <- str_count(align_df$start_align)
+
+ggplot(align_df, aes(length_align))+
+  geom_bar(fill = "#434384")+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank())+
+  scale_x_continuous(breaks = c(seq(0,20,2)))+
+  geom_text(stat="count", aes(x=length_align, label = stat(count)),position = position_dodge(width = 0.9), vjust = -0.3, size = 3)
+
+ggsave("snoDB_analysis_validated/scrambled_terminal_helix_without_boxes_align.pdf", device = cairo_pdf, width = 4, height = 3)
+
+ggplot(align_df, aes(score))+
+  geom_bar(fill = "#434384")+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank())+
+  scale_x_continuous(breaks = c(seq(0,20,2)))+
+  geom_text(stat="count", aes(x=score, label = stat(count)),position = position_dodge(width = 0.9), vjust = -0.3, size = 3)
+
+ggsave("snoDB_analysis_validated/scrambled_score_terminal_helix_without_boxes_align.pdf", device = cairo_pdf, width = 4, height = 3)
+
+align_df <- align_df[str_count(align_df$start_align) >2]
+# 153 su 228
+
+
+
+# match pattern per trovare posizione allineamento
+require(doParallel)
+require(foreach)
+
+ncores <- detectCores()-1
+cluster_ext <- makeCluster(ncores, type = "SOCK")
+registerDoParallel(cl = cluster_ext)
+
+pos_align_df<-NULL
+
+pos_align_df<-foreach(transcript = align_df$transcript,.combine='rbind',.packages = c("data.table","Biostrings")) %dopar% {
+  data.table("transcript" = transcript, tail(as.data.table(vmatchPattern(align_df$start_align[align_df$transcript == transcript], start_seq[transcript])),1), as.data.table(vmatchPattern(align_df$end_align[align_df$transcript == transcript], end_seq[transcript]))[1,])
+}
+stopCluster(cluster_ext)
+
+
+#chiamo le colonne nel modo giusto che se no mi sbaglio
+names(pos_align_df)[c(4:6,9:11)] <- c("align_5_start", "align_5_end", "align_5_width", "align_3_start", "align_3_end", "align_3_width")
+
+# aggiungo risultati match pattern a tabella principale ----
+align_df <- merge(align_df, pos_align_df[,c(1, 4,5,6,9,10,11)], by = "transcript")
+
+align_df <- merge(align_df, snodb_boxes[,c(1, 6,8)], by.x = "transcript", by.y = "snoDB ID")
+
+# trovo posizione reale allineamento in 3'
+
+align_df$align_3_start <- align_df$d_start +5 + align_df$align_3_start-1
+align_df$align_3_end <- align_df$d_start +5 + align_df$align_3_end-1
+
+# trovo posizione reale allineamento in 5'
+
+align_df$align_5_start <- pmax(1, align_df$c_start-6) + align_df$align_5_start -1
+align_df$align_5_end <- pmax(1, align_df$c_start-6) + align_df$align_5_end -1
+
+# guardo distanza massima di inizio allineamento
+align_df$dist_c <- align_df$c_start-align_df$align_5_end+1
+align_df$dist_d <- align_df$align_3_start-(align_df$d_start+4)
+
+write_xlsx(align_df, "snoDB_analysis_validated/scrambled_alignments_terminal_helix.xlsx")
+```
+plot alignments in terminal vs scrambled
+```{r}
+start_seq <- subseq(snoRNA_seq, pmax(1, snodb_boxes$c_start-6), snodb_boxes$c_start)
+end_seq <- subseq(snoRNA_seq, snodb_boxes$d_start+5, pmin(snodb_boxes$d_start+11,width(snoRNA_seq)))
+
+start_seq <- start_seq[width(start_seq)>2]
+end_seq <- end_seq[width(end_seq)>2]
+start_seq <- start_seq[names(start_seq) %in% names(end_seq)]
+end_seq <- end_seq[names(end_seq) %in% names(start_seq)]
+
+
+rev_end_seq <- reverse(end_seq)
+
+
+score_system <- matrix(c(-3,-3,-3,+2,
+                         -3,-3,+3,-3,
+                         -3,+3,-3,+1,
+                         +2,-3,+1,-3),
+                       nrow=4, ncol = 4,
+                       dimnames = list(c("A", "C", "G", "T"), c("A", "C","G","T")))
+
+pwa <- pairwiseAlignment(start_seq, rev_end_seq, type = "local", substitutionMatrix = score_system, gapOpening = 4, gapExtension = 2)
+align_df <- data.table("transcript"= names(start_seq), "start_align" = as.character(alignedPattern(pwa)), "end_align" = as.character(reverse(alignedSubject(pwa))), "score" = score(pwa))
+
+#creo file senza -
+align_df$start_align <- str_replace_all(align_df$start_align, "-", "")
+align_df$end_align <- str_replace_all(align_df$end_align, "-", "")
+
+align_df$length_align <- str_count(align_df$start_align)
+
+scr_snoRNA_seq <- DNAStringSet(stri_rand_shuffle(snoRNA_seq[names(snoRNA_seq) %in% names(start_seq)]))
+names(scr_snoRNA_seq) <- names(start_seq)
+
+start_seq <- subseq(scr_snoRNA_seq, 1, 7)
+end_seq <- subseq(scr_snoRNA_seq, width(scr_snoRNA_seq)-6, width(scr_snoRNA_seq))
+
+# start_seq <- subseq(snoRNA_seq, 1, snodb_boxes$c_start)
+# end_seq <- subseq(snoRNA_seq, snodb_boxes$d_start+5, width(snoRNA_seq))
+
+rev_end_seq <- reverse(end_seq)
+
+
+score_system <- matrix(c(-3,-3,-3,+2,
+                         -3,-3,+3,-3,
+                         -3,+3,-3,+1,
+                         +2,-3,+1,-3),
+                       nrow=4, ncol = 4,
+                       dimnames = list(c("A", "C", "G", "T"), c("A", "C","G","T")))
+
+pwa <- pairwiseAlignment(start_seq, rev_end_seq, type = "local", substitutionMatrix = score_system, gapOpening = 4, gapExtension = 2)
+scr_align_df <- data.table("transcript"= names(scr_snoRNA_seq), "start_align" = as.character(alignedPattern(pwa)), "end_align" = as.character(reverse(alignedSubject(pwa))), "score" = score(pwa))
+
+#creo file senza -
+scr_align_df$start_align <- str_replace_all(scr_align_df$start_align, "-", "")
+scr_align_df$end_align <- str_replace_all(scr_align_df$end_align, "-", "")
+
+table(str_count(scr_align_df$start_align))
+scr_align_df$length_align <- str_count(scr_align_df$start_align)
+
+align_df <- cbind(align_df[,c(1,4,5)], scr_align_df[,4:5])
+names(align_df)[2:5] <- c("score","length", "scr_score","scr_length")
+
+plot_df <- align_df %>% pivot_longer(c(length, scr_length))
+plot_df$name <- factor(plot_df$name, levels = c("length", "scr_length"), labels = c("High confidence snoRNA", "Scramble snoRNA"))
+
+
+ggplot(plot_df, aes(value, fill = name))+
+  geom_bar(position = position_dodge2(preserve = "single"))+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank())+
+  scale_x_continuous(breaks = c(seq(0,20,2)))+
+  geom_text(stat="count", aes(x=value, label = stat(count)),position = position_dodge(width = 0.9), vjust = -0.3, size = 3)+
+  guides(fill=guide_legend(title="snoRNA"))+
+  scale_fill_manual(values = c("#d4aa00", "#7e81a9"))+
+  xlab("Length")+
+  ylab("# of events")
+  
+
+ggsave("snoDB_analysis_validated/length_high_confidence_scramble_terminal_helix_without_boxes_align.pdf", device = cairo_pdf, width = 7, height = 4)
+
+plot_df <- align_df %>% pivot_longer(c(score, scr_score))
+plot_df$name <- factor(plot_df$name, levels = c("score", "scr_score"), labels = c("High confidence snoRNA", "Scramble snoRNA"))
+
+
+ggplot(plot_df, aes(value, fill = name))+
+  geom_bar(position = position_dodge2(preserve = "single"))+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank())+
+  scale_x_continuous(breaks = c(seq(0,20,2)))+
+  geom_text(stat="count", aes(x=value, label = stat(count)),position = position_dodge(width = 0.9), vjust = -0.3, size = 3)+
+  guides(fill=guide_legend(title="snoRNA"))+
+  scale_fill_manual(values = c("#d4aa00", "#7e81a9"))+
+  xlab("Alignment score")+
+  ylab("# of events")
+  
+
+ggsave("snoDB_analysis_validated/score_high_confidence_scramble_terminal_helix_without_boxes_align.pdf", device = cairo_pdf, width = 7, height = 4)
+
+
+```
+
+
+
+guide sequence analysis (with my results)
+
+```{r}
+dboxes <-c("CTGA","CTGC",  "CTGT",  "CTGG",  "CTAC",  "CTAT",  "CTAG",  "CTAA",  "CTCT",  "CTCG",  "CTCA",  "CTCC",  "CTTG",  "CTTA",  "CTTC",  "CTTT",  "CGAA",  "CGCA",  "CGTA",  "CGGA",  "CGGC",  "CGGT",
+           "CGGG", "CACA", "CATA",  "CAGA",  "CAGC",  "CAGT",  "CAGG",  "CAAA",  "CCTA",  "CCGA",  "CCGC",  "CCGT",  "CCGG",  "CCAA",  "CCCA",  "TGGA",  "TAGA",  "TCGA",  "TTGA",  "TTGC",  "TTGT",  "TTGG",
+           "TTAA", "TTCA", "TTTA",  "GAGA",  "GCGA",  "GTGA",  "GTGC",  "GTGT",  "GTGG",  "GTAA",  "GTCA",  "GTTA",  "GGGA",  "ACGA",  "ATGA",  "ATGC",  "ATGT",  "ATGG",  "ATAA",  "ATCA",  "ATTA",  "AGGA",
+           "AAGA")
+
+match_search <- function(i, snoRNA_seq, rRNA_seq){
+  if (i-3 >0 & i+5<=width(rRNA_seq)){
+    print(i)
+    rRNA_met_seq_20 <- subseq(rRNA_seq, i-3, pmin(i+16, width(rRNA_seq)))
+    rRNA_met_seq <- subseq(rRNA_seq, i-3, pmin(i+5, width(rRNA_seq)))
+    # detection guide region 9 (+1 at the beginning) nt
+    seed_sequence <- reverseComplement(DNAString(stri_replace_all_regex(as.character(rRNA_met_seq), c("T", "G"),
+                                                                        c("Y", "R"), vectorize = F)))
+    temp <- as.data.frame(unlist(vmatchPattern(seed_sequence, snoRNA_seq,
+                                               max.mismatch = 1, fixed = F)))
+    # temp <- vmatchPattern(seed_sequence, snoRNA_seq, max.mismatch = 1, fixed = F)
+    temp <- temp[temp$start>7 & temp$end+5 <= width(snoRNA_seq[temp$names]),]
+    
+    # detection dbox g
+    dbox <- dboxes
+    
+    temp$DBox <- ""
+    temp$DBox <- as.character(subseq(snoRNA_seq[temp$names],
+                                     temp$end+2,
+                                     temp$end+5))
+    temp <- temp[temp$DBox %in% dbox,]
+    temp$unique_id <- paste(temp$names, temp$end, sep = "_")
+    
+    # guide evaluation
+    dna_match_seq <- as.data.frame(tstrsplit(as.character(reverse(subseq(snoRNA_seq[temp$names], pmax(temp$start-11, 1), 
+                                                                         temp$end))), "", fixed=T))
+    dna_rRNA_seq <- as.data.frame(tstrsplit(as.character(rRNA_met_seq_20), "", fixed=T))
+    if(ncol(dna_rRNA_seq) <20){
+      diff <- 20-ncol(dna_rRNA_seq)
+      dna_rRNA_seq <- cbind(dna_rRNA_seq, t(rep(NA, diff)))
+
+    }
+    if(ncol(dna_match_seq) <20){
+      diff <- 20-ncol(dna_match_seq)
+      dna_match_seq <- cbind(dna_match_seq, t(rep(NA, diff)))
+
+    }
+    dna_match_seq$names <- temp$names
+    dna_match_seq$stop <- NA
+    dna_match_seq$GU <- 0
+    dna_match_seq$V <- 0
+    dna_match_seq$mis1 <- NA
+    for(j in 1:20){
+      dna_match_seq[,j] <- paste0(as.character(t(dna_match_seq[,j])), as.character(dna_rRNA_seq[1,j]))
+      dna_match_seq[,j] <- str_replace_all(dna_match_seq[,j], "AT|TA|GC|CG", "V")
+      dna_match_seq[,j] <- str_replace_all(dna_match_seq[,j], "GT|TG", "U")
+      non_matching <- !grepl("V|U", dna_match_seq[,j])
+      dna_match_seq[non_matching,j] <- "M"
+      if(j<10){
+        dna_match_seq$V[dna_match_seq[,j] %in% c("V") & is.na(dna_match_seq$stop)] <- dna_match_seq$V[dna_match_seq[,j] %in% c("V") & is.na(dna_match_seq$stop)]+1
+        dna_match_seq$GU[dna_match_seq[,j] %in% c("U") & is.na(dna_match_seq$stop)] <- dna_match_seq$GU[dna_match_seq[,j] %in% c("U") & is.na(dna_match_seq$stop)]+1
+        dna_match_seq$mis1[!dna_match_seq[,j] %in% c("V","U") & is.na(dna_match_seq$mis1) & is.na(dna_match_seq$stop)] <- j
+      }
+      if(j>9){
+        dna_match_seq$stop[!dna_match_seq[,j] %in% c("V","U") & is.na(dna_match_seq$stop)] <- j
+      }
+      if(j==9){
+        dna_match_seq$stop[dna_match_seq$GU >2] <- j
+      }
+      if(j==4){
+        dna_match_seq$stop[!dna_match_seq[,j] %in% c("V","U")] <- j
+      }
+    }
+    dna_match_seq$stop[is.na(dna_match_seq$stop)] <- 21
+    temp$nmismatch <- 0
+    temp$nmismatch[!is.na(dna_match_seq$mis1)] <- 1
+    temp$pos_mismatch <- dna_match_seq$mis1
+    temp$seq_score <- paste0(dna_match_seq[,1], dna_match_seq[,2], dna_match_seq[,3],dna_match_seq[,4],
+                             dna_match_seq[,5], dna_match_seq[,6], dna_match_seq[,7], dna_match_seq[,8],
+                             dna_match_seq[,9])
+    temp$GU <- dna_match_seq$GU
+    temp$V <- dna_match_seq$V
+    temp$width <- dna_match_seq$stop-1
+    temp$start <- temp$end-temp$width+1
+    temp <- temp[temp$width >= 9 & !(temp$pos_mismatch %in% 9 & temp$width == 9),]
+    
+    temp$met_site <- i
+    temp$rRNA <- names(rRNA_seq)
+    # temp$guide_score <- guides_scores_prop[temp$seq_score]
+    # temp <- temp[temp$guide_score >0.68]ù
+    return(temp)
+  }
+}
+
+met_sites$Site[met_sites$Site == "Ψ966"] <- "Ψm966"
+
+rRNA_seq<- readDNAStringSet("../Genome/Human/rRNA/hs_rRNA_hebras_18S.fasta")
+met_sites_18 <- as.numeric(unique(str_split_fixed(met_sites$Site[met_sites$rRNA == "18S"], "m", 2)[,2]))
+hits_final_18 <- rbindlist(lapply(met_sites_18, match_search, snoRNA_seq = snoRNA_seq, rRNA_seq = rRNA_seq))
+
+rRNA_seq<- readDNAStringSet("../Genome/Human/rRNA/hs_rRNA_hebras_28S.fasta")
+met_sites_28 <- as.numeric(unique(str_split_fixed(met_sites$Site[met_sites$rRNA == "28S"], "m", 2)[,2]))
+hits_final_28 <- rbindlist(lapply(met_sites_28, match_search, snoRNA_seq = snoRNA_seq, rRNA_seq = rRNA_seq))
+
+rRNA_seq<- readDNAStringSet("../Genome/Human/rRNA/hs_rRNA_hebras_5.8S.fasta")
+met_sites_58 <- as.numeric(unique(str_split_fixed(met_sites$Site[met_sites$rRNA == "5.8S"], "m", 2)[,2]))
+hits_final_58 <- rbindlist(lapply(met_sites_58, match_search, snoRNA_seq = snoRNA_seq, rRNA_seq = rRNA_seq))
+
+hits_final <- rbind(hits_final_18, hits_final_28, hits_final_58)
+
+hits_final$unique_id <- paste(hits_final$names, hits_final$met_site, hits_final$rRNA, sep = "_")
+met_sites$unique_id <- paste(met_sites$snoDB_id, str_split_fixed(met_sites$Site, "m", 2)[,2], met_sites$rRNA, sep = "_")
+hits_final <- hits_final[hits_final$unique_id %in% met_sites$unique_id,]
+length(unique(hits_final$unique_id))
+# 3 still have duplicates, 4 are not found
+# i will look at those 3 by hand
+sort(table(hits_final$unique_id), decreasing = T)
+hits_final <- hits_final[-c(120, 51, 179)]
+length(unique(hits_final$unique_id))
+
+writexl::write_xlsx(hits_final, "snoDB_analysis_validated/snomatcher_snodb_common.xlsx")
+hits_final<-read_xlsx("snoDB_analysis_validated/snomatcher_snodb_common.xlsx")
+
+snomatcher_snorna_not_common <- met_sites[!met_sites$unique_id %in% hits_final$unique_id,]
+writexl::write_xlsx(snomatcher_snorna_not_common, "snoDB_analysis_validated/snomatcher_snodb_not_common.xlsx")
+
+# snord30 (snodb0374) is completely different from the real snord30
+# snord33 (snodb0782) is different from the real snord33
+# snord62A and B would have two mismatches in the first 9, one on the 9th (not observed in other snornas). not even the nucleotide adjacent to the
+# dbox would interact (so kind of 3 mismatches). a bit too much
+
+```
+
+guide width
+
+```{r}
+ggplot(hits_final, aes(width))+
+  geom_bar(fill="#434384")+
+  theme_bw()+
+  geom_text(stat="count", aes(x=width, label = stat(count)),position = position_dodge(width = 0.9), vjust = -0.3, size = 3)+
+  xlab("Guide width")+
+  ylab("# of events")+
+  scale_x_continuous(breaks = seq(9,19,1))+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank())
+ggsave("snoDB_analysis_validated/guide_width_my_data.pdf", device = cairo_pdf, width=4, height = 3)
+```
+
+
+pairing distributions my results
+```{r}
+
+# plotting guide logos
+pos_pairing <-  as.data.frame(str_split_fixed(hits_final$seq_score, pattern = "", 9))
+names(pos_pairing) <- c("i-3", "i-2", "i-1", "i", "i+1", "i+2", "i+3", "i+4", "i+5")
+plot_df <- pos_pairing %>% pivot_longer(1:9)
+plot_df$value <- factor(plot_df$value, levels = c("V", "U", "M"), labels = c("Canonical", "G-U", "Mismatch"))
+plot_df$name <- factor(plot_df$name, levels = c("i-3", "i-2", "i-1", "i", "i+1", "i+2", "i+3", "i+4", "i+5"))
+ggplot(plot_df, aes(name, after_stat(count/nrow(pos_pairing)), fill = value))+
+  geom_bar()+
+  theme_bw()+
+  scale_fill_manual(values = c("#ead580","#7e81a9","#434384"),name = "Pairing")+
+  ylab("Frequency")+
+  xlab("Position")+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())+
+  coord_cartesian(ylim = c(0,0.5))
+ggsave("snoDB_analysis_validated/pairing_distributions.pdf", width = 4.5, height = 3)
+
+```
+
+# generating guide scores my results
+```{r}
+
+# Sample data matrix
+data_matrix <- as.matrix(pos_pairing)
+
+# Find unique symbols and positions
+unique_symbols <- unique(as.vector(data_matrix))
+positions <- 1:9
+
+# Calculate the frequency of each symbol in each position using apply()
+frequency_matrix <- sapply(positions, function(pos) {
+  col_data <- data_matrix[, pos]
+  table(factor(col_data, levels = unique_symbols))
+})
+
+# Convert the result to a matrix, setting row and column names
+frequency_matrix <- as.matrix(frequency_matrix)
+frequency_matrix <- frequency_matrix/nrow(pos_pairing)
+
+possible_guides <-utils::combn(rep(c("V", "U", "M"), 9),9)
+possible_guides = unique(apply(possible_guides, 2, paste0, collapse=""))
+dist.prova = sapply(possible_guides, function(x) adist(x, "VVVVVVVVV"))
+possible_guides <- possible_guides[dist.prova < 4]
+save(possible_guides, file = "snoDB_analysis_validated/possible_guides.RData")
+
+# Function to calculate the score of a string based on the frequency matrix
+calculate_score <- function(input_string, frequency_matrix) {
+  input_chars <- strsplit(input_string, "")[[1]]
+  row_indices <- match(input_chars, rownames(frequency_matrix))
+  col_indices <- seq_along(input_chars)
+  
+  score <- 0
+  for (i in 1:length(input_chars)) {
+    score <- score + frequency_matrix[row_indices[i], col_indices[i]]
+  }
+  return(score)
+}
+
+# Calculate the score for each element in the input vector
+guides_scores <- sapply(possible_guides, calculate_score, frequency_matrix = frequency_matrix)
+guides_scores_prop <- guides_scores/max(guides_scores)
+guides_scores_prop <- setNames(guides_scores_prop, possible_guides)
+save(guides_scores,guides_scores_prop, file = "snoDB_analysis_validated/guides_scores.RData")
+load("snoDB_analysis_validated/guides_scores.RData")
+# guide scores of my results
+hits_final$guide_score <- guides_scores_prop[hits_final$seq_score]
+                                                                                                                             # minimum is 0.69
+
+ggplot(hits_final, aes(guide_score))+
+  geom_histogram(fill = "#434384")+
+  theme_bw()
+
+ggsave("snoDB_analysis_validated/guide_score_dist.pdf", device = cairo_pdf, height = 3, width = 4)
+```
+
+# match score (box + guide)
+
+```{r}
+hits_final <- merge(hits_final, snodb_boxes[,-c(13:16)], by.x = "names", by.y= "snoDB ID")
+writexl::write_xlsx(hits_final, "snoDB_analysis_validated/snomatcher_snodb_common_anno.xlsx")
+
+hits_final <- read_xlsx("snoDB_analysis_validated/snomatcher_snodb_common.xlsx")
+
+
+hits_final$match_score <- (hits_final$motif_score/3)*5 + hits_final$guide_score*4 + (hits_final$dist_score/4)*1
+
+min(hits_final$match_score, na.rm = T)
+
+ggplot(hits_final, aes(match_score, after_stat(count)/nrow(hits_final)))+
+  geom_histogram(fill = "#434384")+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank())+
+  ylab("Frequency")+
+  xlab("Match score")
+ggsave("snoDB_analysis_validated/match_score_guide_boxes.pdf", width = 3.5, height = 3)
+
+# if i use just 2 of them this is what i would keep
+# minimum is 7.68
+```
+
+# match score (box + guide + dist)
+
+```{r}
+hits_final$match_score_dist <- (hits_final$motif_score/4)*5 + hits_final$guide_score*4 + (hits_final$dist_score/4)*1
+
+min(hits_final$match_score_dist, na.rm = T)
+
+ggplot(hits_final, aes(match_score_dist))+
+  geom_histogram(fill = "#434384")+
+  theme_bw()
+```
+

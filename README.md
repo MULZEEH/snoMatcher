@@ -1,24 +1,29 @@
 # snoMatcher
 
 
-# snoRNA Feature Analysis Pipeline
+### snoRNA Feature Analysis Pipeline
 
-# snoMatcher/
-# |-Snakefile
-# |-config.yaml
-# |-scripts/
-# | |-somescripts
-# |-results/
-# | |-plots/
-# | |-tables/
-# | |-intermediate or processed data/?
-# | |-final ?
-# |-data/
-# | |-raw/
-# | |-.../
-# |-env/
-# | |-sssss.yaml or something
-#
+ snoMatcher/
+ |-Snakefile
+ |-config.yaml
+ |-scripts/
+ | |-somescripts
+ |-results/
+ | |-plots/
+ | |-tables/
+ | |-intermediate or processed data/?
+ | |-final ?
+ |-data/
+ | |-raw/
+ | |-.../
+ |-env/
+ | |-sssss.yaml or something
+
+###installation
+
+...
+
+###other 
 
 setup:
 

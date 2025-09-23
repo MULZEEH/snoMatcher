@@ -10,8 +10,23 @@ library(ggpubr)
 library(tidyverse)
 library(patchwork)
 
+#
+# Pulire il Global Environment prima di eseguire l'if condition
+# Al momento controlla se esiste snakemake (come avviene nella
+# normale procedura con snakemake) in fase di debug pero' non 
+# deve esistere quindi se si e' eseguito l'if una volta la volta
+# dopo questo non considera piu di essere in Debug mode
+#
+#
+# Per eseguire lo script mediante snakemake 
+# |-> snakemake --cores N results/intermediate/info_box.Rdata
+#
+
+
+
 # Check if running with Snakemake or in RStudio
 # Need to clear the environment first -> TODO(FIX)
+rm(snakemake, envir = .GlobalEnv)
 if (!exists("snakemake")) {
   setwd("C:/Users/Marco/RProject/snoMatcher/")
   # Create mock snakemake object for testing in Rstudio
@@ -28,7 +43,7 @@ if (!exists("snakemake")) {
       ),
     config = list(
       generate_plots = TRUE,
-      generate_tables = TRUE
+      export_tables = TRUE
     )
   )
   
