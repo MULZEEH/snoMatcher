@@ -22,7 +22,30 @@
 #import pandas as pd
 #samples = pd.read_csv("sample.tsv", sep='\t').set_index("sample", drop= False)
 
-# POSSIBLE IMPROVEMENT:|- add some additional configuration for the plottingsystem
+# TODO 24/09:
+# @use the config as actual config also for the Snakefile
+#   LIKE
+#   rule setup:
+#     """Load raw data and perform initial processing"""
+#     input:
+#         sno_db = config["input_files"]["snodb"],
+#         met_sites = config["input_files"]["met_sites"], 
+#         sno_boxes = config["input_files"]["sno_boxes"],
+#         dirs = rules.setup_directories.output
+#     output:
+#         info_box = "results/intermediate/info_box.RData",
+#         all_logos = "results/plots/all_logos.pdf" if config.get("generate_plots", True) else [],
+#         guide_width = "results/plots/guide_width.pdf" if config.get("generate_plots", True) else []
+#     threads: config.get("threads", 1)
+#     resources:
+#         mem_mb = config.get("memory", 4000)
+#     script:
+#         "scripts/setup.R"
+# @use expand and if condition inside the rule to expand or not the output based on the flags
+# @set threads but implement it later mdear
+# @take a look at the NEW configuration in config.yaml (in the end commented)
+
+
 
 configfile: "config.yaml"
 
@@ -69,7 +92,7 @@ rule all:
 rule setup : 
 	 input: 
 	   # dir_setup = "results/.dir_setup_complete",
-	   # sno_db = config["input_files"]["snodb"] -> in yaml: snodb: "path"
+	   # sno_db = config["input_files"]["snodb"] -> in yaml: snodb: "path" -> will always switch to this
 	   sno_db = "data/raw/snoDB_data.xlsx",
 	   met_sites = "data/raw/snoDB_rRNA_interactions.xlsx",
 	   sno_boxes = "data/raw/cd_boxes.tsv"
@@ -92,6 +115,9 @@ rule computing_scores :
 	   info_box = "results/intermediate/info_box.Rdata"
 	   
 	 output: 
+	   # NOT WORKING PROPERLY something like this should work:
+	   # plots = expand("results/plots/{plot}.pdf", 
+                      # plot=["box_mismatch_distribution", "all_distance", "motif_score_distribution"]) if config.get("generate_plots", True) else [],
 # 	   possible_box = "results/intermediate/possible_boxes.RData",
 #      scores = "results/intermediate/scores.RData",
 #      box_mismatch_distribution = "results/plots/box_mismatch_distribution.pdf",
@@ -140,34 +166,19 @@ rule computing_scores :
 #=====================================================
 
 rule clean:
-  output:
-    ".dir_clean_ready"
-  shell:
-    """
-        rm -rf results/
-        touch {output}
-        """
+    """Remove all results and temporary files"""
+    shell:
+        "rm -rf results/ .snakemake/"
 
-# rule clean_plot:
-#   shell:
-#     "rm -rf results."
+rule clean_plots:
+    """Remove only plot files"""
+    shell:
+        "rm -rf results/plots/"
 
-
-#not working
-rule setup_directory:
-  input:
-    clean_setup = ".dir_clean_ready"
-  output: 
-    dir_setup = "results/.dir_setup_complete"
-  # message: "setup Directories"
-  shell:
-        """
-        mkdir  results
-        mkdir  results/intermediate
-        mkdir  results/plots
-        mkdir  results/tables
-        touch {output}
-        """
+rule clean_tables:
+    """Remove only table files"""  
+    shell:
+        "rm -rf results/tables/"
 
 
 

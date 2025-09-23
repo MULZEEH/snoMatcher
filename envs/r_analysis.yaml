@@ -1,0 +1,45 @@
+name: snomatcher
+channels:
+  - conda-forge
+  - bioconda
+  - r
+dependencies:
+  # Core workflow management
+  - snakemake>=7.0
+  - mamba
+  
+  # Python dependencies
+  - python>=3.9
+  - pandas>=1.5
+  - numpy>=1.21
+  - matplotlib>=3.5
+  - seaborn>=0.11
+  - scikit-learn>=1.1
+  - jupyter
+  
+  # R and R packages
+  - r-base>=4.2
+  - r-essentials
+  - bioconductor-biostrings
+  - r-data.table
+  - r-stringr
+  - r-writexl
+  - r-readxl
+  - r-ggseqlogo
+  - r-ggplot2
+  - r-ggbeeswarm
+  - r-ggpubr
+  - r-tidyverse
+  - r-patchwork
+  - r-rmarkdown
+  - r-knitr
+  
+  # Bioinformatics tools
+  - bedtools
+  - samtools
+  - blast
+  
+  # Development tools
+  - git
+  - curl
+  - wget

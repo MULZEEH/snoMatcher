@@ -54,7 +54,7 @@ if (!exists("snakemake")) {
   get_output <- function(name) snakemake$output[[name]]
   get_config <- function(name) snakemake$config[[name]]
   # get_threads <- function() snakemake$threads
-  ("Debug execution")
+  cat("Debug mode...")
   
 } else {
   # Helper functions for real snakemake object
@@ -62,7 +62,7 @@ if (!exists("snakemake")) {
   get_output <- function(name) snakemake@output[[name]]
   get_config <- function(name) snakemake@config[[name]]
   # get_threads <- function() snakemake@threads
-  ("snakemake execution")
+  cat("snakemake execution...")
 }
 
 snodb <- read_xlsx(get_input("sno_db"))

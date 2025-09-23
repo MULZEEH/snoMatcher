@@ -46,3 +46,43 @@ output_folders:
   plots: "plots"
   tables: "tables"
   final: "final"
+  
+  
+  # snoMatcher NEW Configuration File
+# 
+# # Input files
+# input_files:
+#   snodb: "data/raw/snoDB_data.xlsx"
+#   met_sites: "data/raw/snoDB_rRNA_interactions.xlsx"
+#   sno_boxes: "data/raw/cd_boxes.tsv"
+#   human_genome: "data/raw/human_genome.fasta"
+# 
+# # Processing options
+# generate_plots: true
+# export_tables: true
+# 
+# # Computational resources
+# threads: 4
+# memory: 8000  # Memory in MB
+# 
+# # Analysis parameters
+# scoring:
+#   min_guide_length: 7
+#   max_guide_length: 18
+#   mismatch_threshold: 2
+# 
+# # Output options
+# plots:
+#   format: "pdf"
+#   width: 10
+#   height: 8
+#   dpi: 300
+# 
+# tables:
+#   format: "csv"
+#   
+# # ML parameters (for future expansion)
+# machine_learning:
+#   model_type: "random_forest"
+#   cv_folds: 5
+#   test_size: 0.2
