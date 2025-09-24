@@ -22,7 +22,7 @@ snoMatcher is a Snakemake-based pipeline that processes snoRNA sequence data to:
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/your-username/snoMatcher.git
+git clone https://github.com/MULZEEH/snoMatcher.git
 cd snoMatcher
 ```
 
