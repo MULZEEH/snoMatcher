@@ -20,8 +20,8 @@ library(ggseqlogo)
 library(ggplot2)
 library(ggbeeswarm)
 library(ggpubr)
-# library(seqLogo)
 library(ape)
+# library(seqLogo)
 library(tidyr)
 # snakemake@input[["counts"]]  ->THATS HOW I PASS THE DAATA FROM THE SNAKE FILE TO THE ACTUAL R SCRPT
 
@@ -117,7 +117,6 @@ pfm_c_prime <- consensusMatrix(c_prime, as.prob = T)
 write.csv(pfm_c_prime, "snoDB_analysis_validated/pfm_c_prime_box_snoDb_snoRNA.csv")
 c_prime[dist.prova1[c_prime]>3]
 c_prime[dist.prova2[c_prime]>3]
-# pwm -> what
 
 c_prime_box_scores <- sapply(possible_cboxes, PWMscoreStartingAt, pwm = as.matrix(pfm_c_prime))
 c_prime_box_scores_prop <- c_prime_box_scores/max(c_prime_box_scores)
@@ -354,11 +353,11 @@ ggsave("snoDB_analysis_validated/c_d_dist.pdf", device = cairo_pdf, width = 4, h
 
 
 pairing distributions
+
 ```{r}
 snodb_data <- snodb_boxes %>% dplyr::select(-c("guide1_start", "guide2_start")) %>% pivot_longer(c(guide1_seq, guide2_seq), names_to = "guide", values_to = "guide_seq") %>% filter(guide_seq != "") %>% mutate(guide_seq = str_sub(guide_seq, -10, -2))
 
 
-# devo iniziare a settare la pipeline per tradurre ttto quello che sta succedendo -> INIZIA CON LA PIPELINE FATTTA BEN
 rRNA_seq<- readDNAStringSet("../Genome/Human/rRNA/hs_rRNA_hebras_processed.fasta")
 met_sites$rRNA_seq <- as.character(subseq(rRNA_seq[met_sites$rRNA], met_sites$`Pos snoRNABase`-3, met_sites$`Pos snoRNABase`+5))
 # detection guide region 9 (+1 at the beginning) nt
@@ -389,6 +388,7 @@ names(pos_pairing) <- c("i-3", "i-2", "i-1", "i", "i+1", "i+2", "i+3", "i+4", "i
 ```
 
 # generating guide scores my results
+
 ```{r}
 
 # Sample data matrix
@@ -449,16 +449,16 @@ ggplot(hits_final, aes(guide_score))+
 ggsave("snoDB_analysis_validated/guide_score_dist.pdf", device = cairo_pdf, height = 3, width = 4)
 ```
 
-# negative examples
+# negative examples (I DONT HAVE THAT FILE) -> analysing pre post change in the negatives df
 
 ```{r}
 negatives <- read.csv("gene_bodies_ENSG00000079974.19_site_6437_.csv")
 negatives <- negatives %>% dplyr::select(unique_id, seq_score, c_box_seq, d_prime_box_seq, c_prime_box_seq, d_box_seq,c_d_prime_dist, d_prime_c_prime_dist, c_prime_d_dist, c_d_dist,)
 negatives$guide_score <- guides_scores[negatives$seq_score]
 negatives$c_box_score <- cbox_scores[negatives$c_box_seq]
-negatives$dprime_box_score <- d_prime_box_scores[negatives$d_prime_box_seq]
 negatives$cprime_box_score <- c_prime_box_scores[negatives$c_prime_box_seq]
 negatives$d_box_score <- dbox_scores[negatives$d_box_seq]
+negatives$dprime_box_score <- d_prime_box_scores[negatives$d_prime_box_seq]
 negatives <- negatives[sample(1:nrow(negatives), 600),]
 negatives$snoRNA <- F
 negatives <- negatives %>% dplyr::rename(dist_d_prime_c_prime = d_prime_c_prime_dist, dist_c_prime_d = c_prime_d_dist, dist_c_d_prime = c_d_prime_dist, dist_c_d = c_d_dist)
@@ -467,7 +467,7 @@ snorna_machine_learning <- rbind(snodb_data_guide %>% dplyr::select(c_box_score,
 save(snodb_data_guide, negatives, snorna_machine_learning, file = "snorna_machine_learning.RData")
 load("snorna_machine_learning.RData")
 
-# a snorna has a shorter cbox, i need to remove it for now
+# a snorna has a shorter cbox, i need to remove it for now -> what snorna?
 snorna_machine_learning <- na.omit(snorna_machine_learning)
 snorna_machine_learning$snoRNA <- as.factor(snorna_machine_learning$snoRNA)
 
@@ -475,6 +475,7 @@ snorna_machine_learning$snoRNA <- as.factor(snorna_machine_learning$snoRNA)
 ```
 
 time for learning
+
 ```{r}
 # Load required libraries
 library(randomForest)
@@ -501,7 +502,7 @@ model <- ranger(
   snoRNA ~ ., 
   data = train_data,
   importance = "permutation", # For feature importance
-  num.trees = 500,
+  num.trees = 500, # data to 
   mtry = sqrt(ncol(train_data) - 1),
   probability = T
 )
@@ -531,6 +532,7 @@ ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
   labs(title = "Feature Importance (Random Forest)")
 
 ```
+Wrapup all the tests on real data
 
 
 # trying with real data 159
@@ -570,7 +572,6 @@ write_xlsx(new_data_with_predictions, "snoRNA_randomforest_159_18S_human.xlsx")
 
 ```
 
-
 # trying with real data 222
 ```{r}
 
@@ -580,11 +581,18 @@ load("snoDB_analysis_validated/c_prime_box_scores.RData")
 load("snoDB_analysis_validated/d_prime_box_scores.RData")
 load("snoDB_analysis_validated/guides_scores.RData")
 
+# modelo topo
 putative_222 <- read.csv("snoRNA_mouse_met_222.csv")
 
-putative_222 <- putative_222 %>% dplyr::select(unique_id,names, seq_score, c_box_seq, d_prime_box_seq, c_prime_box_seq, d_box_seq,c_d_prime_dist, d_prime_c_prime_dist, c_prime_d_dist, c_d_dist)
+# ask christian why not select(putative, c(unique...))
+putative_222 <- putative_222 %>% dplyr::select(unique_id, names, seq_score, 
+                                               c_box_seq, d_prime_box_seq, 
+                                               c_prime_box_seq, d_box_seq,
+                                               c_d_prime_dist, d_prime_c_prime_dist, 
+                                               c_prime_d_dist, c_d_dist)
+
 putative_222$guide_score <- guides_scores[putative_222$seq_score]
-putative_222$c_box_score <- cbox_scores[putative_222$c_box_seq]
+putative_222$c_box_score <- cbox_scores[putative_222$c_box_seq] #so the cbox_scores works simingly as a function?
 putative_222$dprime_box_score <- d_prime_box_scores[putative_222$d_prime_box_seq]
 putative_222$cprime_box_score <- c_prime_box_scores[putative_222$c_prime_box_seq]
 putative_222$d_box_score <- dbox_scores[putative_222$d_box_seq]
@@ -636,7 +644,7 @@ putative_578$cprime_box_score <- c_prime_box_scores[putative_578$c_prime_box_seq
 putative_578$d_box_score <- dbox_scores[putative_578$d_box_seq]
 putative_578 <- putative_578 %>% dplyr::rename(dist_d_prime_c_prime = d_prime_c_prime_dist, dist_c_prime_d = c_prime_d_dist, dist_c_d_prime = c_d_prime_dist, dist_c_d = c_d_dist)
 
-# Normalize numerical features (e.g., distances)
+# Normalize numerical features (e.g., distances) -> why
 preproc_578 <- preProcess(putative_578, method = c("center", "scale"))
 data_norm_578 <- predict(preproc_578, putative_578)
 
@@ -663,10 +671,13 @@ as.character(subseq(snoRNA_seq["ENSMUSG00000002565"], 51300, 51450))
 ```
 
 fitting distance with distribution
+
 ```{r}
 # fitting distribution to distances
 
 library(fitdistrplus)
+
+# trying both pois and nbin and return best fitting
 fit_function <- function(vect){
   fit_pois <- fitdist(vect, distr= "pois", method = "mle")
   fit_nbin <- fitdist(vect, distr = "nbinom", method = "mle")
@@ -797,7 +808,7 @@ end_seq <- subseq(snoRNA_seq, snodb_boxes$d_start+1, pmin(snodb_boxes$d_start+11
 
 rev_end_seq <- reverse(end_seq)
 
-
+# what ar eu doing?
 score_system <- matrix(c(-3,-3,-3,+2,
                          -3,-3,+3,-3,
                          -3,+3,-3,+1,
@@ -972,7 +983,9 @@ align_df$dist_d <- align_df$align_3_start-(align_df$d_start+4)
 write_xlsx(align_df, "snoDB_analysis_validated/alignments_terminal_helix.xlsx")
 
 ```
+
 alignments in terminal helix of scrambled snornas
+
 ```{r}
 scr_snoRNA_seq <- DNAStringSet(stri_rand_shuffle(snoRNA_seq))
 names(scr_snoRNA_seq) <- names(snoRNA_seq)

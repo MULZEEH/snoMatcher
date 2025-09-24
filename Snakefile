@@ -142,23 +142,16 @@ rule computing_scores :
 #=====================================================
 # PAIRING DISTRIBUTIONS AND GUIDE -> TODO ctrl+shift+c is ma friend
 #=====================================================
- 
-# rule pairing_distributions :
-# 	 input:
-# 	   snodb_boxes = ...
-# 	   metsites = (done in the setup.R)
-# 	   human_genome = .fasta
-# 	 output: 
-# 	 script: 
 
-#=====================================================
-#
-#=====================================================
- 
-# rule other :
-# 	 input: 
-# 	 output: 
-# 	 script: 
+rule model_comparing:
+  input: 
+    rf_model = "models/rf_model.RData",
+    svm_model = "models/svm_model.RData",
+    xgboost_model = "models/xgboost_model.RData",
+    cnn_model = "models/cnn_model.RData"
+  output:
+    prediction_comparison = "results/final/models_comp_plot.pdf"
+  
 	   
 
 #=====================================================

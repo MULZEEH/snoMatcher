@@ -18,6 +18,7 @@ library(tidyr)
 library(patchwork)
 library(tidyverse)
 
+
 # Check if running with Snakemake or in RStudio
 # Need to clear the environment first -> TODO(FIX)
 rm(snakemake, envir = .GlobalEnv)
@@ -76,7 +77,7 @@ if (!exists("snakemake")) {
 }
 
 load(file = get_input("info_box"))
-
+# 
 c <- c(snodb_boxes$c_seq[str_count(snodb_boxes$c_seq) == 7])
 c_prime <- c(snodb_boxes$c_prime_seq)
 d <- c(snodb_boxes$d_seq)
@@ -113,10 +114,10 @@ pfm_c_prime <- consensusMatrix(c_prime, as.prob = T)
 
 #=== ACTUAL SCOREs ===
 cbox_scores <- sapply(possible_cboxes, PWMscoreStartingAt, pwm = as.matrix(pfm_c))
-# cbox_scores_prop <- cbox_scores/max(cbox_scores)
+cbox_scores_prop <- cbox_scores/max(cbox_scores)
 
 c_prime_box_scores <- sapply(possible_cboxes, PWMscoreStartingAt, pwm = as.matrix(pfm_c_prime))
-# c_prime_box_scores_prop <- c_prime_box_scores/max(c_prime_box_scores)
+c_prime_box_scores_prop <- c_prime_box_scores/max(c_prime_box_scores)
 
 
 #=== MISMATCH SCOREs ===
@@ -155,11 +156,11 @@ pfm_d_prime <- consensusMatrix(d_prime, as.prob = T)
 #=== ACTUAL SCOREs ===
 dbox_scores <- sapply(possible_dboxes, PWMscoreStartingAt, 
                       pwm = as.matrix(pfm_d))
-# dbox_scores_prop <- dbox_scores/max(dbox_scores)
+dbox_scores_prop <- dbox_scores/max(dbox_scores)
 
 d_prime_box_scores <- sapply(possible_dboxes, PWMscoreStartingAt, 
                              pwm = as.matrix(pfm_d_prime))
-# d_prime_box_scores_prop <- d_prime_box_scores/max(d_prime_box_scores)
+d_prime_box_scores_prop <- d_prime_box_scores/max(d_prime_box_scores)
 
 
 
@@ -189,7 +190,119 @@ save(cbox_scores, cbox_scores_prop,
 #      dbox_scores, d_prime_box_scores, 
 #      file = get_output("box_scores"))
 
-#resaving the input (since i added something inthe snodb_boxes)
+
+#==============================================================
+#                 PAIRING DISTRIBUTIONS -> guide distribution could also have its own file
+#==============================================================
+
+snodb_data <- snodb_boxes %>% dplyr::select(-c("guide1_start", "guide2_start")) %>% pivot_longer(c(guide1_seq, guide2_seq), names_to = "guide", values_to = "guide_seq") %>% filter(guide_seq != "") %>% mutate(guide_seq = str_sub(guide_seq, -10, -2))
+
+rRNA_seq<- readDNAStringSet("data/raw/hs_rRNA_hebras_processed.fasta")
+met_sites$rRNA_seq <- as.character(subseq(rRNA_seq[met_sites$rRNA], 
+                                          met_sites$`Pos snoRNABase`-3, 
+                                          met_sites$`Pos snoRNABase`+5))
+
+# detection guide region 9 (+1 at the beginning) nt ???
+snodb_data_guide <- merge(snodb_data, 
+                          met_sites[, c("snoDB_id", "Symbol", 
+                                        "rRNA", "Pos snoRNABase", 
+                                        "rRNA_seq")], 
+                          by.x = c("snoDB ID", "Symbol"), 
+                          by.y = c("snoDB_id", "Symbol"))
+
+# guide evaluation
+snorna_match_seq <- as.data.frame(tstrsplit(as.character(reverse(snodb_data_guide$guide_seq)),
+                                            "",
+                                            fixed=T))
+
+rRNA_match_seq <- as.data.frame(tstrsplit(as.character(snodb_data_guide$rRNA_seq),
+                                          "",
+                                          fixed=T))
+
+for(j in 1:9){ #9 cause of the guide region ???
+  snorna_match_seq[,j] <- paste0(as.character(snorna_match_seq[,j]),
+                                 as.character(rRNA_match_seq[,j]))
+  snorna_match_seq[,j] <- str_replace_all(snorna_match_seq[,j],
+                                          "AT|TA|GC|CG",
+                                          "V")
+  snorna_match_seq[,j] <- str_replace_all(snorna_match_seq[,j],
+                                          "GT|TG",
+                                          "U")
+  
+  non_matching <- !grepl("V|U", snorna_match_seq[,j])
+  snorna_match_seq[non_matching,j] <- "M"
+}
+
+snodb_data_guide$guide_match <- paste0(snorna_match_seq[,1], snorna_match_seq[,2], snorna_match_seq[,3],snorna_match_seq[,4],snorna_match_seq[,5], snorna_match_seq[,6], snorna_match_seq[,7], snorna_match_seq[,8],snorna_match_seq[,9])
+snodb_data_guide <- snodb_data_guide[str_split_fixed(snodb_data_guide$guide_match, "", 9)[,4] == "V",]
+snodb_data_guide <- snodb_data_guide[str_count(snodb_data_guide$guide_match, "M") <2,]
+
+snodb_data_guide <- snodb_data_guide %>% dplyr::select(-c(rRNA, `Pos snoRNABase`)) %>% distinct()
+
+pos_pairing <-  as.data.frame(str_split_fixed(snodb_data_guide$guide_match, pattern = "", 9))
+names(pos_pairing) <- c("i-3", "i-2", "i-1", "i", "i+1", "i+2", "i+3", "i+4", "i+5")
+
+#==============================================================
+#             GENERATING GUIDE SCORES FROM SAMPLE????? (i find hypothetical guide sequence? like the guided sequence)
+#==============================================================
+
+# Sample data matrix
+data_matrix <- as.matrix(pos_pairing)
+
+# Find unique symbols and positions
+unique_symbols <- unique(as.vector(data_matrix))
+positions <- 1:9
+
+# Calculate the frequency of each symbol in each position using apply()
+frequency_matrix <- sapply(positions, function(pos) {
+  col_data <- data_matrix[, pos]
+  table(factor(col_data, levels = unique_symbols))
+})
+
+# Convert the result to a matrix, setting row and column names
+frequency_matrix <- as.matrix(frequency_matrix)
+frequency_matrix <- frequency_matrix/nrow(pos_pairing)
+
+possible_guides <- utils::combn(rep(c("V", "U", "M"), 9),9)
+possible_guides = unique(apply(possible_guides, 2, paste0, collapse=""))
+dist.prova = sapply(possible_guides, function(x) adist(x, "VVVVVVVVV"))
+possible_guides <- possible_guides[dist.prova < 4]
+# save(possible_guides, file = "snoDB_analysis_validated/possible_guides.RData")
+
+# Function to calculate the score of a string based on the frequency matrix
+calculate_score <- function(input_string, frequency_matrix) {
+  input_chars <- strsplit(input_string, "")[[1]]
+  row_indices <- match(input_chars, rownames(frequency_matrix))
+  col_indices <- seq_along(input_chars)
+  
+  score <- 0
+  for (i in 1:length(input_chars)) {
+    score <- score + frequency_matrix[row_indices[i], col_indices[i]]
+  }
+  return(score)
+}
+
+# Calculate the score for each element in the input vector
+guides_scores <- sapply(possible_guides, calculate_score, frequency_matrix = frequency_matrix)
+guide
+guides_scores_prop <- guides_scores/max(guides_scores)
+guides_scores_prop <- setNames(guides_scores_prop, possible_guides)
+names(guides_scores) <- str_split_fixed(names(guides_scores), "[.]",2)[,1]
+# save(guides_scores,guides_scores_prop, file = "snoDB_analysis_validated/guides_scores.RData")
+
+# guide scores of my results
+snodb_data_guide$guide_score <- guides_scores[snodb_data_guide$guide_match]
+# minimum is 0.69
+
+snodb_data_guide$snoRNA <- T
+
+ggplot(hits_final, aes(guide_score))+
+  geom_histogram(fill = "#434384")+
+  theme_bw()
+
+ggsave("snoDB_analysis_validated/guide_score_dist.pdf", device = cairo_pdf, height = 3, width = 4)
+
+#resaving the input (since i added something inthe snodb_boxes) -> IS IT NECESSARY? MI ERO SALVATO L'OBJ IN MODO DA CONTINUARE A CARICARLO E MODIFICARLO IN "LOCALE" PER OGNI SOTTO SCRIPT? AVENDO COMUNQUE LORIGINALE?
 save(met_sites, snodb_boxes, file = get_output("processed_info_box"))
 
 #=== PLOTTINI ===#
@@ -381,6 +494,117 @@ if(get_config("generate_plots")){
   #        combined_plot, 
   #        device = cairo_pdf, 
   #        width = 10, height = 8)
+  
+  # fitting distribution to distances
+  
+  library(fitdistrplus)
+  
+  # trying both pois and nbin and return best fitting
+  fit_function <- function(vect){
+    fit_pois <- fitdist(vect, distr= "pois", method = "mle")
+    fit_nbin <- fitdist(vect, distr = "nbinom", method = "mle")
+    dist <- seq(min(vect),max(vect), 1)
+    fit_pois <- dpois(dist, lambda = fit_pois$estimate)
+    fit_nbin <- dnbinom(dist,  size= fit_nbin$estimate[1], mu = fit_nbin$estimate[2])
+    df_fit_pois <- data.frame(dist, fit_pois)
+    df_fit_nbin <- data.frame(dist, fit_nbin)
+    vect_df <- as.data.table(table(vect))
+    vect_df[, N_norm := N/sum(N)]
+    vect_df <- vect_df[order(vect)]
+    df_fit_pois <- merge(df_fit_pois, vect_df, by.x = "dist", by.y = "vect", all.x=T)
+    df_fit_pois$N_norm[is.na(df_fit_pois$N_norm)] <-0 
+    df_fit_nbin <- merge(df_fit_nbin, vect_df, by.x = "dist", by.y = "vect", all.x=T)
+    df_fit_nbin$N_norm[is.na(df_fit_nbin$N_norm)] <-0 
+    pois_cor <- cor(df_fit_pois$fit_pois, df_fit_pois$N_norm)
+    nbin_cor <- cor(df_fit_nbin$fit_nbin, df_fit_nbin$N_norm)
+    print(pois_cor)
+    print(nbin_cor)
+    if(pois_cor>nbin_cor){
+      best_fit <- (df_fit_pois)
+    } else{
+      best_fit <-(df_fit_nbin)
+    }
+    best_fit$score <- c(best_fit[,2])/max(c(best_fit[,2]))
+    return(best_fit)
+  }
+  
+  c_d_prime_dist_fit <- fit_function(snodb_boxes$dist_d_prime_c)
+  v_c_d_prime_dist_fit <- setNames(c_d_prime_dist_fit$score, c_d_prime_dist_fit$dist)
+  save(c_d_prime_dist_fit, v_c_d_prime_dist_fit, file = "snoDB_analysis_validated/c_d_prime_dist_nbin_scores.RData")
+  
+  ggplot(c_d_prime_dist_fit, aes(dist,N_norm))+
+    geom_col(fill = "#434384")+
+    geom_line(aes(dist, fit_nbin), color = "#d4aa00", linewidth = 1)+
+    theme_bw()+
+    xlab("Dist C-D' Box")+
+    ylab("Density")+
+    scale_color_manual(values = c(snoRNAs = "#434384", Nbinom = "#d4aa00"))
+  ggsave("snoDB_analysis_validated/c_d_prime_dist_nbin_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+  
+  c_prime_d_dist_fit <- fit_function(snodb_boxes$dist_d_c_prime)
+  v_c_prime_d_dist_fit <- setNames(c_prime_d_dist_fit$score, c_prime_d_dist_fit$dist)
+  save(c_prime_d_dist_fit, v_c_prime_d_dist_fit, file = "snoDB_analysis_validated/c_prime_d_dist_nbin_scores.RData")
+  
+  ggplot(c_prime_d_dist_fit, aes(dist,N_norm))+
+    geom_col(fill = "#434384")+
+    geom_line(aes(dist, fit_nbin), color = "#d4aa00", linewidth = 1)+
+    theme_bw()+
+    xlab("Dist C'-D Box")+
+    ylab("Density")+
+    scale_color_manual(values = c(snoRNAs = "#434384", Nbinom = "#d4aa00"))
+  ggsave("snoDB_analysis_validated/c_prime_d_dist_nbin_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+  
+  c_prime_d_prime_dist_fit <- fit_function(snodb_boxes$dist_c_prime_d_prime)
+  v_c_prime_d_prime_dist_fit <- setNames(c_prime_d_prime_dist_fit$score, c_prime_d_prime_dist_fit$dist)
+  save(c_prime_d_prime_dist_fit, v_c_prime_d_prime_dist_fit, file = "snoDB_analysis_validated/c_prime_d_prime_dist_nbin_scores.RData")
+  
+  ggplot(c_prime_d_prime_dist_fit, aes(dist,N_norm))+
+    geom_col(fill = "#434384")+
+    geom_line(aes(dist, fit_nbin), color = "#d4aa00", linewidth = 1)+
+    theme_bw()+
+    xlab("Dist C'-D' Box")+
+    ylab("Density")+
+    scale_color_manual(values = c(snoRNAs = "#434384", Nbinom = "#d4aa00"))
+  ggsave("snoDB_analysis_validated/c_prime_d_prime_dist_fit_nbin_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+  
+  c_d_dist_fit <- fit_function(snodb_boxes$dist_c_d)
+  v_c_d_dist_fit <- setNames(c_d_dist_fit$score, c_d_dist_fit$dist)
+  save(c_d_dist_fit, v_c_d_dist_fit,file = "snoDB_analysis_validated/c_d_dist_pois_scores.RData")
+  
+  ggplot(c_d_dist_fit, aes(dist,N_norm))+
+    geom_col(fill = "#434384")+
+    geom_line(aes(dist, fit_pois), color = "#d4aa00", linewidth = 1)+
+    theme_bw()+
+    xlab("Dist C-D Box")+
+    ylab("Density")+
+    scale_color_manual(values = c(snoRNAs = "#434384", Nbinom = "#d4aa00"))
+  ggsave("snoDB_analysis_validated/c_d_dist_pois_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+  
+  # let's try distance scorings on real snoRNAs
+  load("snoDB_analysis_validated/c_d_dist_pois_scores.RData")
+  load("snoDB_analysis_validated/c_d_prime_dist_nbin_scores.RData")
+  load("snoDB_analysis_validated/c_prime_d_dist_nbin_scores.RData")
+  load("snoDB_analysis_validated/c_prime_d_prime_dist_nbin_scores.RData")
+  snodb_boxes$dist_c_d_prime_score <- v_c_d_prime_dist_fit[as.character(snodb_boxes$dist_d_prime_c)]
+  snodb_boxes$dist_d_c_prime_score <-v_c_prime_d_dist_fit[as.character(snodb_boxes$dist_d_c_prime)]
+  snodb_boxes$dist_c_prime_d_prime_score <-v_c_prime_d_prime_dist_fit[as.character(snodb_boxes$dist_c_prime_d_prime)]
+  snodb_boxes$dist_c_d_score <- v_c_d_dist_fit[as.character(snodb_boxes$dist_c_d)]
+  
+  snodb_boxes$dist_score <- v_c_d_prime_dist_fit[as.character(snodb_boxes$dist_d_prime_c)]+
+    v_c_prime_d_dist_fit[as.character(snodb_boxes$dist_d_c_prime)]+
+    v_c_prime_d_prime_dist_fit[as.character(snodb_boxes$dist_c_prime_d_prime)]+
+    v_c_d_dist_fit[as.character(snodb_boxes$dist_c_d)]
+  
+  write_xlsx(snodb_boxes, "snoDB_analysis_validated/snodb_analysis.xlsx")
+  
+  ggplot(snodb_boxes, aes(dist_score, after_stat(count/sum(count))))+
+    geom_histogram(fill = "#434384")+
+    theme_bw()+
+    scale_x_continuous(breaks = c(0.5,1,1.5,2,2.5,3,3.5,4))+
+    ylab("Density")
+  ggsave("snoDB_analysis_validated/dist_score_dist.pdf", device = cairo_pdf, width = 4, height = 3)
+  # min is 0.69
+  
 }
 
 #=== EXPORTING PFM TABLES ===#
