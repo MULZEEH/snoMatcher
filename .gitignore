@@ -1,1 +1,4 @@
 .snakemake
+.Rhistory
+Rplots.pdf
+# results/*
