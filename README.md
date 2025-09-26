@@ -9,6 +9,7 @@ snoMatcher is a Snakemake-based pipeline that processes snoRNA sequence data to:
 - Score and classify snoRNA sequences
 - Generate visualizations of sequence motifs and distributions
 - Export analysis results in multiple formats
+- Given a Metilation site, run through the given genome sequence searching for possible snoRNA 
 
 
 ## Installation
