@@ -32,22 +32,37 @@ input_files:
   met_sites: "data/raw/snoDB_rRNA_interactions.xlsx"
   sno_boxes: "data/raw/cd_boxes.tsv"
 
+#=====================================================
+# OUTPUT FILES
+#=====================================================
+
 output_files:
+  guide:
+  info_box:
+  possible_boxes:
+  scores:
+  snorna_machine_learning:
+  #plots
+  all_distance:
+  all_logos:
+  down_motif_score_distribution:
+  up_motif_score_distribution:
+  motif_score_snoDB_distribution:
+  guide_width:
+  #tables
+  pfm_cbox_snoDb: 
+  pfm_dbox_snoDb:
+  pfm_cbox_prime_snoDb:
+  pfm_dbox_prime_snoDb:
+  # ...
+
+#=====================================================
+# MACHINE LEARNING 
+#=====================================================
   
-#=====================================================
-# OUTPUT FOLDERS
-#=====================================================
-
-# Define the base directory for all output files.
-# This can be useful for changing the entire output structure.
-output_dir: "results"
-
-# Define the sub-directories for specific output types.
-output_folders:
-  intermediate: "intermediate"
-  plots: "plots"
-  tables: "tables"
-  final: "final"
+machine_learning:
+  model:
+  test_size:
   
   
 #   # snoMatcher NEW Configuration File

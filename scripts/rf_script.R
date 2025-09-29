@@ -5,6 +5,46 @@ library(caret)
 
 
 
+# Check if running with Snakemake or in RStudio
+# Need to clear the environment first -> TODO(FIX)
+rm(snakemake, envir = .GlobalEnv)
+if (!exists("snakemake")) {
+  # need to change the static hardcoded setwd
+  setwd("C:/Users/Marco/RProject/snoMatcher/")
+  # Create mock snakemake object for testing in Rstudio
+  snakemake <- list(
+    input = list(
+      snorna_machine_learning = "results/intermediate/snorna_machine_learning.RData"
+    ),
+    output = list(
+      
+      
+    ),
+    config = list(
+      generate_plots = TRUE,
+      export_tables = TRUE
+    )
+  )
+  
+  # Helper function for mock object
+  get_input <- function(name) snakemake$input[[name]]
+  get_output <- function(name) snakemake$output[[name]]
+  get_config <- function(name) snakemake$config[[name]]
+  # get_threads <- function() snakemake$threads
+  ("Debug execution")
+  
+} else {
+  # Helper functions for real snakemake object
+  get_input <- function(name) snakemake@input[[name]]
+  get_output <- function(name) snakemake@output[[name]]
+  get_config <- function(name) snakemake@config[[name]]
+  # get_threads <- function() snakemake@threads
+  ("snakemake execution")
+}
+
+load(file = get_input("snorna_machine_learning"))
+
+
 # Normalize numerical features (e.g., distances)
 preproc <- preProcess(snorna_machine_learning, method = c("center", "scale"))
 data_norm <- predict(preproc, snorna_machine_learning)
@@ -23,10 +63,15 @@ model <- ranger(
   snoRNA ~ ., 
   data = train_data,
   importance = "permutation", # For feature importance
-  num.trees = 500, # to check w
+  num.trees = 1000, # to check w -> add to config file
   mtry = sqrt(ncol(train_data) - 1),
   probability = T
 )
+#===
+#Step 2: Make predition on test data
+#===
+pred <- predict(model, test_data)
+# pred <- predict(model, train_data)
 
 # --------------------------------------
 # Step 3: Evaluate performance

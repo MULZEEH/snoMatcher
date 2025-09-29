@@ -22,29 +22,6 @@
 #import pandas as pd
 #samples = pd.read_csv("sample.tsv", sep='\t').set_index("sample", drop= False)
 
-# TODO 24/09:
-# @use the config as actual config also for the Snakefile
-#   LIKE
-#   rule setup:
-#     """Load raw data and perform initial processing"""
-#     input:
-#         sno_db = config["input_files"]["snodb"],
-#         met_sites = config["input_files"]["met_sites"], 
-#         sno_boxes = config["input_files"]["sno_boxes"],
-#         dirs = rules.setup_directories.output
-#     output:
-#         info_box = "results/intermediate/info_box.RData",
-#         all_logos = "results/plots/all_logos.pdf" if config.get("generate_plots", True) else [],
-#         guide_width = "results/plots/guide_width.pdf" if config.get("generate_plots", True) else []
-#     threads: config.get("threads", 1)
-#     resources:
-#         mem_mb = config.get("memory", 4000)
-#     script:
-#         "scripts/setup.R"
-# @use expand and if condition inside the rule to expand or not the output based on the flags
-# @set threads but implement it later mdear
-# @take a look at the NEW configuration in config.yaml (in the end commented)
-
 
 
 configfile: "config.yaml"

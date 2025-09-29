@@ -449,7 +449,7 @@ ggplot(hits_final, aes(guide_score))+
 ggsave("snoDB_analysis_validated/guide_score_dist.pdf", device = cairo_pdf, height = 3, width = 4)
 ```
 
-# negative examples (I DONT HAVE THAT FILE) -> analysing pre post change in the negatives df
+# negative examples -> analysing pre post change in the negatives df
 
 ```{r}
 negatives <- read.csv("gene_bodies_ENSG00000079974.19_site_6437_.csv")
@@ -788,7 +788,7 @@ ggsave("snoDB_analysis_validated/dist_score_dist.pdf", device = cairo_pdf, width
 scoring motif + dist -> whats the purpose???? what are those numbers????
 
 ```{r}
-snodb_boxes$motif_dist_score <- (snodb_boxes$motif_score/3)*5 + (snodb_boxes$dist_score/4)
+# snodb_boxes$motif_dist_score <- (snodb_boxes$motif_score/3)*5 + (snodb_boxes$dist_score/4)
 # min is 4.3
 ```
 
@@ -984,7 +984,7 @@ write_xlsx(align_df, "snoDB_analysis_validated/alignments_terminal_helix.xlsx")
 
 ```
 
-alignments in terminal helix of scrambled snornas
+alignments in terminal helix of scrambled snornas -> as negatives
 
 ```{r}
 scr_snoRNA_seq <- DNAStringSet(stri_rand_shuffle(snoRNA_seq))
@@ -1181,10 +1181,7 @@ ggplot(plot_df, aes(value, fill = name))+
 
 ggsave("snoDB_analysis_validated/score_high_confidence_scramble_terminal_helix_without_boxes_align.pdf", device = cairo_pdf, width = 7, height = 4)
 
-
 ```
-
-
 
 guide sequence analysis (with my results)
 

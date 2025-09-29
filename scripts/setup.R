@@ -53,6 +53,8 @@ library(yaml)
 
 # @take a look at the NEW configuration in config.yaml (in the end commented)
 # @wrap bunch of code that do shit as a single function 
+# @add the other feature analysis
+# # quindi io controllo anche dentro gli introni per capire se ce' uno snorna?
 
 # # --- Dynamic Configuration Loading For Correct Use Of Yamz ---
 # 
@@ -72,7 +74,7 @@ library(yaml)
 # )
 # metodi ml nuovi |->  random forest comparison
 # XGBoost
-# SVM
+# SVM check
 # CNN (or deep learning techiniquss)
 
 
