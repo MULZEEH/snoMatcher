@@ -55,6 +55,7 @@ if (!exists("snakemake")) {
   ("Debug execution")
   
 } else {
+# somewhat a graphic analysis of the negatives?
   # Helper functions for real snakemake object
   get_input <- function(name) snakemake@input[[name]]
   get_output <- function(name) snakemake@output[[name]]
@@ -68,6 +69,7 @@ load(file = get_input("scores"))
 load(file = get_input("guide"))
 
 negatives <- read.csv(get_input("negatives"))
+# what is seq score?? rRNA su negatives e' sempre lo stesso???
 negatives <- negatives %>% dplyr::select(unique_id, seq_score, c_box_seq, d_prime_box_seq, c_prime_box_seq, d_box_seq,c_d_prime_dist, d_prime_c_prime_dist, c_prime_d_dist, c_d_dist,)
 negatives$guide_score <- guides_scores[negatives$seq_score]
 negatives$c_box_score <- cbox_scores[negatives$c_box_seq]
@@ -85,6 +87,4 @@ snorna_machine_learning <- rbind(snodb_data_guide %>% dplyr::select(c_box_score,
 snorna_machine_learning <- na.omit(snorna_machine_learning)
 snorna_machine_learning$snoRNA <- as.factor(snorna_machine_learning$snoRNA)
 
-save(snodb_data_guide, negatives, snorna_machine_learning, file = get_output("snorna_machine_learning"))
-
-# somewhat a graphic analysis of the negatives?
+save(snodb_data_guide, negatives, snorna_m

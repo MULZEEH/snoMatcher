@@ -62,12 +62,11 @@ if (!exists("snakemake")) {
 }
 
 load(file = get_input("info_box"))
-
+load 
 #===
 #PAIRING DISTRIBUTIONS -> guide distribution could also have its own file
 #===
 
-# why do i have 2 type(?) of sequences?
 snodb_data <- snodb_boxes %>% dplyr::select(-c("guide1_start", "guide2_start")) %>% pivot_longer(c(guide1_seq, guide2_seq), names_to = "guide", values_to = "guide_seq") %>% filter(guide_seq != "") %>% mutate(guide_seq = str_sub(guide_seq, -10, -2))
 
 rRNA_seq<- readDNAStringSet("data/raw/hs_rRNA_hebras_processed.fasta")

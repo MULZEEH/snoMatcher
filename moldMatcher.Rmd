@@ -450,6 +450,7 @@ ggsave("snoDB_analysis_validated/guide_score_dist.pdf", device = cairo_pdf, heig
 ```
 
 # negative examples -> analysing pre post change in the negatives df
+come ha computato il box score?
 
 ```{r}
 negatives <- read.csv("gene_bodies_ENSG00000079974.19_site_6437_.csv")

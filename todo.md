@@ -4,17 +4,11 @@
 ~~snodb_boxes_scores~~
 ~~mismatch_boxes~~
 ~~distance~~
-pairing_distributions
-generated_guide_scores_my_resul
-negative_examples
-learning_random_forest
-other_learning
-testingvalidating
-fitting_distance_with_distribution
-other
+controlla energia libera di GIBBY e strututtra secondaria
+3D modeling 
 
 ampliare dati(e negativi)-> guarda altre pubblicazioni (snorna guida pochi principalmente predizioni)# [ mancanza di validazioni ] TOPO -> fbk metilaz\tion sites
- ampliare dati(e negativi, altre sequenze !snoRNA allinterno degli introni)-> guarda altre pubblicazioni (snorna guida pochi principalmente predizioni)
+ampliare dati(e negativi, altre sequenze !snoRNA allinterno degli introni)-> guarda altre pubblicazioni (snorna guida pochi principalmente predizioni)
  [ aggiungere altre specie -> tabelle un po cosi da sistemare ]
  analisi strutture secondarie?
 # TODO 24/09:
@@ -57,6 +51,7 @@ ampliare dati(e negativi)-> guarda altre pubblicazioni (snorna guida pochi princ
    output = mock_config$mock_output,
   config = mock_config$parameters
  )
- metodi ml nuovi |->  random forest comparison
+metodi ml nuovi |->  random forest comparison
 
 miao miao -> provare a definire un encoder decoder in C super ottimizzato per creare snorna possibili -> hashing and batching
+ha senso salvarsi inizio e fine delle box se ho gia salvato anche la lunghezza scrivendo la seq?

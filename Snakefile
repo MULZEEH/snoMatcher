@@ -152,53 +152,5 @@ rule clean_tables:
 
 
 
-# 
-# ###=====================================================
-# ###================TO DELETE============================
-# ###============= OPTIONAL DATA  ========================
-# ###============ (tables & plots) =======================
-# ###=====================================================
-# # IT MAKEES NO SENSE TO DO SOMETHING LIKE THIS, JUST LOOK AT A snakemake@config var that tells me if i have to do a condition or not
-# if config.get("generate_plots", True):
-#   rule setup_plots:
-#     input:
-#       info_boxes = "results/intermediate/info_boxes.Rdata"
-#       
-#     output:
-#       all_logos = "results/plots/all_logos.pdf",
-#       guide_width = "results/plots/guide_width.pdf"
-#       
-#     script:
-#       "scripts/setup_plotting.R"
-#       
-#   rule scores_plots:
-#     input:
-#       info_boxes = "results/intermediate/info_boxes.Rdata"
-#       # 
-#     output:
-#        box_mismatch_distribution = "results/plots/box_mismatch_distribution.pdf",
-#   	   all_distance = "results/plots/all_distance.pdf",
-#   	   c_prime_d_prime_dist = "results/plots/c_prime_d_prime_dist.pdf",
-#   	   #...and such 
-#   	   motif_score_distribution = "results/plots/motif_score_snoDB_distribution.pdf",
-#   	   up_motif_score_distribution = "results/plots/up_motif_score_distribution.pdf",
-#   	   down_motif_score_distribution = "results/plots/down_motif_score_distribution.pdf"
-#   	   
-#   	 script:
-#   	   "scripts/scores_plotting.R"
-#   	   
-#   if config.get("export_tables", True):
-#     rule scores_tables:
-#       input: 
-#         info_boxes = "results/intermediate/info_boxes.Rdata"
-#         
-#       output:
-#         pfm_c_box_snoDb_snoRNA = "results/tables/pfm_c_box_snoDb_snoRNA.csv",
-#         pfm_c_prime_box_snoDb_snoRNA = "results/tables/pfm_c_prime_box_snoDb_snoRNA.csv",
-#         pfm_d_box_snoDb_snoRNA = "results/tables/pfm_d_box_snoDb_snoRNA.csv",
-#         pfm_d_prime_box_snoDb_snoRNA = "results/tables/pfm_d_prime_box_snoDb_snoRNA.csv"
-#         
-#       script:
-#         "scripts/score_tables.R"
-#         
+# Based on the model chosen it should exe differents rule ->
 #   
