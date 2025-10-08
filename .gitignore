@@ -1,4 +1,5 @@
-.snakemake
+.snakemake/
 .Rhistory
+.RData
 Rplots.pdf
 # results/*
