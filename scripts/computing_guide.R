@@ -62,9 +62,9 @@ if (!exists("snakemake")) {
 }
 
 load(file = get_input("info_box"))
-load 
+
 #===
-#PAIRING DISTRIBUTIONS -> guide distribution could also have its own file
+#PAIRING DISTRIBUTIONS 
 #===
 
 snodb_data <- snodb_boxes %>% dplyr::select(-c("guide1_start", "guide2_start")) %>% pivot_longer(c(guide1_seq, guide2_seq), names_to = "guide", values_to = "guide_seq") %>% filter(guide_seq != "") %>% mutate(guide_seq = str_sub(guide_seq, -10, -2))
@@ -119,6 +119,7 @@ names(pos_pairing) <- c("i-3", "i-2", "i-1", "i", "i+1", "i+2", "i+3", "i+4", "i
 #===
 #ACTUAL GENERATING
 #===
+
 # Sample data matrix
 data_matrix <- as.matrix(pos_pairing)
 

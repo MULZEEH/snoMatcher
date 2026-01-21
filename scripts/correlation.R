@@ -1,3 +1,5 @@
+# Test correlation about differnet features of snoRNA sequences
+
 setwd("C:/Users/Marco/RProject/snoMatcher/")
 
 library(Biostrings)

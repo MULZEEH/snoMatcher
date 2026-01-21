@@ -7,6 +7,7 @@ dependencies:
   # Core workflow management
   - snakemake>=7.0
   - mamba
+  - dot
   
   # Python dependencies
   - python>=3.9
@@ -33,6 +34,9 @@ dependencies:
   - r-patchwork
   - r-rmarkdown
   - r-knitr
+  - r-randomforest
+  - r-ranger
+  - r-caret
   
   # Bioinformatics tools
   - bedtools

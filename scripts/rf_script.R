@@ -17,7 +17,7 @@ if (!exists("snakemake")) {
       snorna_machine_learning = "results/intermediate/snorna_machine_learning.RData"
     ),
     output = list(
-      
+       model ="results/models/rf_model.RData",
       
     ),
     config = list(
@@ -96,3 +96,5 @@ ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
   geom_bar(stat = "identity") +
   coord_flip() +
   labs(title = "Feature Importance (Random Forest)")
+
+save(model, preproc, file = get_output("model"))

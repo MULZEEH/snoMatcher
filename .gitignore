@@ -1,6 +1,7 @@
 .snakemake/
 .Rhistory
 .RData
+.pdf
 Rplots.pdf
 results/
 other/

@@ -7,6 +7,10 @@
 controlla energia libera di GIBBY e strututtra secondaria
 3D modeling 
 
+run
+snakemake --dag | dot -Tpdf > dag.pdf
+
+
 ampliare dati(e negativi)-> guarda altre pubblicazioni (snorna guida pochi principalmente predizioni)# [ mancanza di validazioni ] TOPO -> fbk metilaz\tion sites
 ampliare dati(e negativi, altre sequenze !snoRNA allinterno degli introni)-> guarda altre pubblicazioni (snorna guida pochi principalmente predizioni)
  [ aggiungere altre specie -> tabelle un po cosi da sistemare ]

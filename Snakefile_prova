@@ -12,10 +12,6 @@ from pathlib import Path
 
 configfile: "config.yaml"
 
-
-print(f"number of cores {config.get("cores", False)}")
-
-
 # Validate required config parameters
 # Config file needs to define input files and options
 required_params = ["input_files", "generate_plots", "export_tables"]
@@ -74,7 +70,8 @@ def get_table_outputs():
 
 def get_model_outputs():
     """Generate list of model outputs based on config"""
-    model_type = config.get("machine_learning", {}).get("model", "rf")
+    #to ne updated
+    model_type = config.get("machine_learning", {}).get("model", "rf", "xgboost", "all")
     
     models = {
         "rf": MODELS_DIR / "rf_model.RData",
@@ -112,7 +109,7 @@ rule all:
         get_model_outputs(),
         
         # Final report
-        # FINAL_DIR / "analysis_report.html"
+        FINAL_DIR / "analysis_report.html"
     message:
         "Pipeline completed successfully! Results in {RESULTS_DIR}"
 
@@ -147,7 +144,7 @@ rule setup:
         guide_width = PLOTS_DIR / "guide_width.pdf" if config.get("generate_plots") else []
     params:
         generate_plots = config.get("generate_plots", True)
-    threads: config.get("threads", 3)
+    threads: config.get("threads", 1)
     resources:
         mem_mb = config.get("memory", 4000)
     log:
